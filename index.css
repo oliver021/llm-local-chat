@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/* Dark mode via .dark class on <html> */
+@variant dark (&:where(.dark, .dark *));
+
+/* Custom theme tokens (replaces tailwind.config.js in v4) */
+@theme {
+  --font-family-sans: 'Inter', sans-serif;
+
+  --color-gray-850: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+
+  /* Refined: 6px feels tighter and more polished than 10px */
+  --animate-fade-in-up: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-scale-in: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in-left: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  --keyframes-fadeInUp-0: { opacity: 0; transform: translateY(6px); };
+  --keyframes-fadeInUp-100: { opacity: 1; transform: translateY(0); };
+  --keyframes-scaleIn-0: { opacity: 0; transform: scale(0.96); };
+  --keyframes-scaleIn-100: { opacity: 1; transform: scale(1); };
+  --keyframes-slideInLeft-0: { opacity: 0; transform: translateX(-8px); };
+  --keyframes-slideInLeft-100: { opacity: 1; transform: translateX(0); };
+}
+
+@keyframes fadeInUp {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  0% { opacity: 0; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideInLeft {
+  0% { opacity: 0; transform: translateX(-8px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* Brand text selection color */
+::selection {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: inherit;
+}
+.dark ::selection {
+  background-color: rgba(96, 165, 250, 0.25);
+}
+
+/* Better Inter rendering */
+body {
+  font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar — webkit */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.25);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.35);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(75, 85, 99, 0.6);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.25) transparent;
+}
+.dark * {
+  scrollbar-color: rgba(75, 85, 99, 0.35) transparent;
+}
+
+/* Hide scrollbar for clean sidebar but allow scroll */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

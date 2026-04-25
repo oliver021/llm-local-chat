@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aura Chat</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /*
+      SCROLLBAR GUTTER FIX: Reserves space for scrollbar without visual shift
+      scrollbar-gutter: stable means the browser always reserves space for scrollbars
+      This prevents the "gap" between sidebar and main content when scrollbars appear/disappear
+      Supported in modern browsers (Chrome 94+, Firefox 109+, Safari 16+)
+    */
+    html {
+      scrollbar-gutter: stable;
+    }
+  </style>
+</head>
+<body class="bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans antialiased transition-colors duration-300 h-screen overflow-hidden">
+  <div id="root" class="h-full"></div>
+  <script type="module" src="./index.tsx"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  /**
+   * Separate TypeScript config for Playwright E2E tests.
+   *
+   * Kept isolated so test code doesn't affect the app build:
+   *  - Uses Node module resolution (not Vite's "bundler" mode)
+   *  - Allows emitting output (Playwright compiles tests itself)
+   *  - Excludes app source — tests only import from @playwright/test and ./pages
+   */
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "module": "CommonJS",       // Playwright runs via Node, not a browser bundler
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,       // Skip type-checking deep in node_modules
+    "outDir": "../dist-e2e",    // Compiled output separate from app dist
+    "rootDir": ".",
+    "baseUrl": "."
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["../node_modules", "../dist"]
+}
