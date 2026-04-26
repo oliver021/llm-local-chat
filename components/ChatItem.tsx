@@ -17,6 +17,7 @@ interface ChatItemProps {
   onSelectChat: (id: string) => void;
   onTogglePin: (id: string) => void;
   onDeleteChat: (id: string) => void;
+  onArchiveChat: (id: string) => void;
   onRenameChat: (id: string, newTitle: string) => void;
 }
 
@@ -26,6 +27,7 @@ export const ChatItem: React.FC<ChatItemProps> = ({
   onSelectChat,
   onTogglePin,
   onDeleteChat,
+  onArchiveChat,
   onRenameChat,
 }) => {
   const isActive = chat.id === activeChatId;
@@ -185,10 +187,10 @@ export const ChatItem: React.FC<ChatItemProps> = ({
               Copy
             </button>
 
-            {/* Archive — not implemented */}
+            {/* Archive */}
             <button
-              disabled
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-light tracking-tight text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50"
+              onClick={() => { setMenuOpen(false); onArchiveChat(chat.id); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-light tracking-tight text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
             >
               <ArchiveIcon size={13} />
               Archive

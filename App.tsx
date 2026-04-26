@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Toaster } from 'sonner';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
@@ -6,6 +6,7 @@ import { ChatArea } from './components/ChatArea';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SettingsModal } from './components/Settings';
 import { ModelSelectorModal } from './components/ModelSelectorModal';
+import { ArchivedChatsPage } from './components/ArchivedChatsPage';
 import { ChatActionsProvider } from './context/ChatContext';
 import { useTheme } from './hooks/useTheme';
 import { useUIState } from './hooks/useUIState';
@@ -33,6 +34,7 @@ const App: React.FC = () => {
     handleSelectChat,
     handleTogglePin,
     handleDeleteChat,
+    handleArchiveChat,
     handleRenameChat,
     handleStopStreaming,
     handleSendMessage,
@@ -42,6 +44,12 @@ const App: React.FC = () => {
     handleRegenerateMessage,
     handleClearHistory,
   } = useChats(closeSidebar, activeProvider, activeModel);
+
+  // Archived chats page visibility
+  const [archivedOpen, setArchivedOpen] = useState(false);
+
+  const openArchived = useCallback(() => setArchivedOpen(true), []);
+  const closeArchived = useCallback(() => setArchivedOpen(false), []);
 
   // Ref forwarded to ChatInput so the keyboard shortcut can focus it
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -69,6 +77,7 @@ const App: React.FC = () => {
         handleSelectChat,
         handleTogglePin,
         handleDeleteChat,
+        handleArchiveChat,
         handleRenameChat,
         handleStopStreaming,
         openSettings,
@@ -96,14 +105,13 @@ const App: React.FC = () => {
           onNewChat={handleNewChat}
           onTogglePin={handleTogglePin}
           onDeleteChat={handleDeleteChat}
+          onArchiveChat={handleArchiveChat}
           onRenameChat={handleRenameChat}
           onOpenSettings={openSettings}
+          onOpenArchived={openArchived}
           isOpen={sidebarOpen}
         />
 
-        {/* MAIN LAYOUT: Flex column with fixed header + scrollable chat area */}
-        {/* flex-1: Main expands to fill remaining space (after sidebar on md:) */}
-        {/* min-w-0: Prevents overflow of flex children on narrow screens */}
         <main className="flex-1 flex flex-col min-w-0 relative">
           <TopNav
             theme={theme}
@@ -112,8 +120,8 @@ const App: React.FC = () => {
             currentChatTitle={activeChat?.title !== 'New Chat' ? activeChat?.title : undefined}
             activeProvider={activeProvider}
             activeModel={activeModel}
+            onOpenArchived={openArchived}
           />
-          {/* ErrorBoundary isolates crashes to the chat area; sidebar + settings survive */}
           <ErrorBoundary>
             <ChatArea chat={activeChat} isTyping={isTyping} inputRef={inputRef} />
           </ErrorBoundary>
@@ -128,12 +136,19 @@ const App: React.FC = () => {
           activeModel={activeModel}
           onSelect={setProviderAndModel}
         />
+
+        <ArchivedChatsPage
+          isOpen={archivedOpen}
+          onClose={closeArchived}
+          onRestored={() => {
+            // Re-fetch active chats so restored chat appears in sidebar immediately.
+            // The simplest way is a page reload; a lighter option would be to call
+            // dbGetChats() and merge — but since restores are rare, reload is fine.
+            window.location.reload();
+          }}
+        />
       </div>
 
-      {/*
-        Toaster: positioned top-right, respects dark/light mode automatically.
-        richColors enables semantic green/red/yellow styling for success/error/warning.
-      */}
       <Toaster
         position="top-right"
         richColors

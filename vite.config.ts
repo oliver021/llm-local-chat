@@ -11,6 +11,10 @@ export default defineConfig(({ mode }) => {
       },
       server: {
         proxy: {
+          '/api': {
+            target: 'http://localhost:3001',   // local API server (SQLite)
+            changeOrigin: true,
+          },
           '/v1': {
             target: 'http://localhost:8080',   // llama-server
             changeOrigin: true,

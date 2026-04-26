@@ -2,17 +2,17 @@ import { ChatSession, Theme } from '../types';
 import type { ProviderKey } from '../hooks/useProvider';
 
 const STORAGE_KEYS = {
-  CHATS:    'AURA_CHATS',
   THEME:    'AURA_THEME',
   UI_STATE: 'AURA_UI_STATE',
   PROVIDER: 'LLM_ACTIVE_PROVIDER',
   MODEL:    'LLM_ACTIVE_MODEL',
+  // Legacy key — read once during migration then cleared
+  LEGACY_CHATS: 'AURA_CHATS',
 } as const;
 
 const VALID_PROVIDERS: ProviderKey[] = ['llm-llamacpp', 'llm-openai', 'llm-claude', 'llm-ollama'];
 
 // ── Generic helpers ────────────────────────────────────────────────────────────
-// Centralises all try/catch boilerplate so individual getters/setters stay lean.
 
 function storageGet<T>(key: string, fallback: T, validate?: (v: unknown) => v is T): T {
   try {
@@ -50,14 +50,6 @@ interface UIState {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-export function getStoredChats(fallback: ChatSession[]): ChatSession[] {
-  return storageGet(STORAGE_KEYS.CHATS, fallback, Array.isArray);
-}
-
-export function setStoredChats(chats: ChatSession[]): void {
-  storageSet(STORAGE_KEYS.CHATS, chats);
-}
-
 export function getStoredTheme(fallback: Theme): Theme {
   const stored = storageGet<string>(STORAGE_KEYS.THEME, '');
   return stored === 'light' || stored === 'dark' ? stored : fallback;
@@ -70,11 +62,11 @@ export function setStoredTheme(theme: Theme): void {
 export function getStoredUIState(fallback: UIState): UIState {
   const stored = storageGet<Partial<UIState>>(STORAGE_KEYS.UI_STATE, {});
   return {
-    sidebarOpen:     typeof stored.sidebarOpen     === 'boolean' ? stored.sidebarOpen     : fallback.sidebarOpen,
-    settingsOpen:    typeof stored.settingsOpen     === 'boolean' ? stored.settingsOpen    : fallback.settingsOpen,
-    compactMode:     typeof stored.compactMode      === 'boolean' ? stored.compactMode     : fallback.compactMode,
-    dataCollection:  typeof stored.dataCollection   === 'boolean' ? stored.dataCollection  : fallback.dataCollection,
-    chatHistory:     typeof stored.chatHistory      === 'boolean' ? stored.chatHistory     : fallback.chatHistory,
+    sidebarOpen:    typeof stored.sidebarOpen    === 'boolean' ? stored.sidebarOpen    : fallback.sidebarOpen,
+    settingsOpen:   typeof stored.settingsOpen   === 'boolean' ? stored.settingsOpen   : fallback.settingsOpen,
+    compactMode:    typeof stored.compactMode    === 'boolean' ? stored.compactMode    : fallback.compactMode,
+    dataCollection: typeof stored.dataCollection === 'boolean' ? stored.dataCollection : fallback.dataCollection,
+    chatHistory:    typeof stored.chatHistory    === 'boolean' ? stored.chatHistory    : fallback.chatHistory,
   };
 }
 
@@ -100,13 +92,30 @@ export function setStoredModel(model: string): void {
   storageSet(STORAGE_KEYS.MODEL, model);
 }
 
+/**
+ * One-time migration: reads chats from the old localStorage key and removes it.
+ * Returns null if no legacy data exists.
+ */
+export function drainLegacyChats(): ChatSession[] | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.LEGACY_CHATS);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_CHATS);
+    return Array.isArray(parsed) ? (parsed as ChatSession[]) : null;
+  } catch {
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_CHATS);
+    return null;
+  }
+}
+
 export function clearAllStorage(): void {
   try {
-    localStorage.removeItem(STORAGE_KEYS.CHATS);
     localStorage.removeItem(STORAGE_KEYS.THEME);
     localStorage.removeItem(STORAGE_KEYS.UI_STATE);
     localStorage.removeItem(STORAGE_KEYS.PROVIDER);
     localStorage.removeItem(STORAGE_KEYS.MODEL);
+    localStorage.removeItem(STORAGE_KEYS.LEGACY_CHATS);
   } catch (error) {
     console.warn('Failed to clear localStorage:', error);
   }

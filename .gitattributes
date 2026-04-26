@@ -1,0 +1,23 @@
+# GitHub Linguist Configuration
+# Explicitly set language detection for this TypeScript/React project
+
+# TypeScript files
+*.ts linguist-language=TypeScript
+*.tsx linguist-language=TypeScript
+
+# JavaScript files
+*.js linguist-language=JavaScript
+*.jsx linguist-language=JavaScript
+
+# Exclude non-essential files from language statistics
+node_modules/ linguist-vendored=true
+dist/ linguist-generated=true
+build/ linguist-generated=true
+.next/ linguist-generated=true
+coverage/ linguist-generated=true
+playwright-report/ linguist-generated=true
+test-results/ linguist-generated=true
+
+# Documentation
+*.md linguist-language=Markdown
+LICENSE linguist-language=Text

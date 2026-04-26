@@ -3,6 +3,7 @@ import { ChatSession } from '../types';
 import { Plus, Settings, ColorfulIcon, Sparkles } from './Icons';
 import { ChatItem } from './ChatItem';
 
+
 interface SidebarProps {
   chats: ChatSession[];
   activeChatId: string | null;
@@ -10,8 +11,10 @@ interface SidebarProps {
   onNewChat: () => void;
   onTogglePin: (id: string) => void;
   onDeleteChat: (id: string) => void;
+  onArchiveChat: (id: string) => void;
   onRenameChat: (id: string, newTitle: string) => void;
   onOpenSettings: () => void;
+  onOpenArchived: () => void;
   isOpen: boolean;
 }
 
@@ -22,17 +25,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNewChat,
   onTogglePin,
   onDeleteChat,
+  onArchiveChat,
   onRenameChat,
   onOpenSettings,
   isOpen,
 }) => {
   const pinnedChats = chats.filter((c) => c.isPinned).sort((a, b) => b.updatedAt - a.updatedAt);
   const recentChats = chats.filter((c) => !c.isPinned).sort((a, b) => b.updatedAt - a.updatedAt);
-
-  // SCROLLBAR WIDTH COMPENSATION (see index.html scrollbar-gutter: stable):
-  // On desktop (md:), when ChatArea scrolls, its scrollbar (~17px) appears.
-  // Without compensation, sidebar visually "expands" making a gap between sidebar border and scrollbar.
-  // Solution: CSS scrollbar-gutter: stable reserves scrollbar space to prevent layout shift.
 
   return (
     <aside
@@ -62,7 +61,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Chat Lists */}
       <div className="flex-1 overflow-y-auto no-scrollbar pb-4">
         {chats.length === 0 ? (
-          // Empty state
           <div className="flex flex-col items-center justify-center h-full px-4 py-8 text-center">
             <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center mb-4">
               <Sparkles size={24} className="text-blue-500 dark:text-blue-400" />
@@ -87,6 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onSelectChat={onSelectChat}
                         onTogglePin={onTogglePin}
                         onDeleteChat={onDeleteChat}
+                        onArchiveChat={onArchiveChat}
                         onRenameChat={onRenameChat}
                       />
                     </li>
@@ -108,6 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onSelectChat={onSelectChat}
                       onTogglePin={onTogglePin}
                       onDeleteChat={onDeleteChat}
+                      onArchiveChat={onArchiveChat}
                       onRenameChat={onRenameChat}
                     />
                   </li>
@@ -119,7 +119,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+      <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-1">
         <button
           onClick={onOpenSettings}
           className="flex items-center gap-3 px-4 py-2.5 w-full rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-300 transition-colors"

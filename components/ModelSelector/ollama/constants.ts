@@ -1,0 +1,15 @@
+export const COMMON_TAGS: Record<string, string[]> = {
+  'default':   ['latest', '8b', '70b'],
+  'llama3':    ['latest', '8b', '70b', '8b-instruct', '70b-instruct'],
+  'llama3.1':  ['latest', '8b', '70b', '405b'],
+  'llama3.2':  ['latest', '1b', '3b'],
+  'mistral':   ['latest', '7b'],
+  'qwen2':     ['latest', '0.5b', '1.5b', '7b', '72b'],
+  'qwen2.5':   ['latest', '0.5b', '1.5b', '3b', '7b', '14b', '32b', '72b'],
+  'phi4':      ['latest'],
+  'gemma2':    ['latest', '2b', '9b', '27b'],
+  'gemma3':    ['latest', '1b', '4b', '12b', '27b'],
+  'deepseek':  ['latest', '7b', '67b'],
+  'codellama': ['latest', '7b', '13b', '34b', '70b'],
+  'phi3':      ['latest', 'mini', 'medium'],
+};

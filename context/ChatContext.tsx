@@ -95,6 +95,7 @@ interface ChatActionsContextValue {
    */
   handleTogglePin: (id: string) => void;
   handleDeleteChat: (id: string) => void;
+  handleArchiveChat: (id: string) => void;
   handleRenameChat: (id: string, newTitle: string) => void;
   handleStopStreaming: () => void;
 

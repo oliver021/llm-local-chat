@@ -1,21 +1,33 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { ChatSession, Message } from '../types';
-import { MOCK_CHATS } from '../constants';
 import { getStreamFn } from '../services/providerDispatch';
 import type { ProviderKey } from './useProvider';
-import { getStoredChats, setStoredChats, clearAllStorage } from '../utils/storage';
+import { drainLegacyChats, clearAllStorage } from '../utils/storage';
 import { makeChatTitle } from '../utils/chatUtils';
+import {
+  dbGetChats,
+  dbCreateChat,
+  dbUpdateChat,
+  dbDeleteChat,
+  dbDeleteAllChats,
+  dbAddMessage,
+  dbUpdateMessage,
+  dbDeleteMessage,
+  dbArchiveChat,
+} from '../utils/chatApi';
 
 interface UseChatsResult {
   chats: ChatSession[];
   activeChatId: string | null;
   activeChat: ChatSession | null;
   isTyping: boolean;
+  dbReady: boolean;
   handleNewChat: () => void;
   handleSelectChat: (id: string) => void;
   handleTogglePin: (id: string) => void;
   handleDeleteChat: (id: string) => void;
+  handleArchiveChat: (id: string) => void;
   handleRenameChat: (id: string, newTitle: string) => void;
   handleStopStreaming: () => void;
   handleSendMessage: (content: string) => void;
@@ -26,24 +38,62 @@ interface UseChatsResult {
   handleClearHistory: () => void;
 }
 
+// Swallow DB errors so UI keeps working if the API server is momentarily down.
+function db<T>(p: Promise<T>): void {
+  p.catch(err => console.error('[db]', err));
+}
+
 export function useChats(
   onMobileNavigate?: () => void,
   activeProvider: ProviderKey = 'llm-llamacpp',
   activeModel = 'model.gguf'
 ): UseChatsResult {
-  const [chats, setChats] = useState<ChatSession[]>(() => getStoredChats(MOCK_CHATS));
+  const [chats, setChats] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-
-  // isTyping = true only during the initial delay before the first token arrives
   const [isTyping, setIsTyping] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
 
-  // cancelStream holds the abort function returned by streamMockAiResponse.
+  // cancelStream holds the abort function returned by the stream provider.
   const cancelStreamRef = useRef<(() => void) | null>(null);
 
-  // Persist chats to localStorage whenever they change
+  // Mirrors chats state so stable callbacks can read the latest value.
+  const chatsRef = useRef<ChatSession[]>([]);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
+
+  // Tracks the chat+message currently being streamed so we can persist on stop/error.
+  const streamingCtxRef = useRef<{ chatId: string; messageId: string } | null>(null);
+
+  // ── Boot: load from DB, migrate legacy localStorage chats ─────────────────
+
   useEffect(() => {
-    setStoredChats(chats);
-  }, [chats]);
+    dbGetChats()
+      .then(async (rows) => {
+        // Only count non-archived rows for the "is DB empty" check
+        const activeRows = rows.filter(r => !r.isArchived);
+        if (activeRows.length === 0) {
+          // One-time migration: import any chats that lived in localStorage
+          const legacy = drainLegacyChats();
+          if (legacy && legacy.length > 0) {
+            for (const chat of legacy) {
+              await dbCreateChat(chat);
+              for (const msg of chat.messages) {
+                await dbAddMessage(chat.id, msg);
+              }
+            }
+            setChats(legacy);
+            setDbReady(true);
+            return;
+          }
+        }
+        setChats(rows.filter(r => !r.isArchived));
+        setDbReady(true);
+      })
+      .catch(err => {
+        console.error('[db] Failed to load chats:', err);
+        // Graceful degradation: keep UI working in memory-only mode
+        setDbReady(true);
+      });
+  }, []);
 
   // Cancel any in-flight stream on unmount
   useEffect(() => {
@@ -51,7 +101,7 @@ export function useChats(
   }, []);
 
   // ── Private helper ─────────────────────────────────────────────────────────
-  /** Cancels any running stream and resets the typing indicator. */
+
   const cancelActiveStream = useCallback(() => {
     cancelStreamRef.current?.();
     cancelStreamRef.current = null;
@@ -69,8 +119,9 @@ export function useChats(
       updatedAt: Date.now(),
       messages: [],
     };
-    setChats((prev) => [newChat, ...prev]);
+    setChats(prev => [newChat, ...prev]);
     setActiveChatId(newChat.id);
+    db(dbCreateChat(newChat));
     if (window.innerWidth < 768) onMobileNavigate?.();
   }, [cancelActiveStream, onMobileNavigate]);
 
@@ -84,35 +135,59 @@ export function useChats(
   );
 
   const handleTogglePin = useCallback((id: string) => {
-    setChats((prev) =>
-      prev.map((chat) => (chat.id === id ? { ...chat, isPinned: !chat.isPinned } : chat))
+    setChats(prev =>
+      prev.map(chat => {
+        if (chat.id !== id) return chat;
+        const updated = { ...chat, isPinned: !chat.isPinned };
+        db(dbUpdateChat(id, { isPinned: updated.isPinned }));
+        return updated;
+      })
     );
   }, []);
 
   const handleDeleteChat = useCallback((id: string) => {
-    setChats((prev) => prev.filter((chat) => chat.id !== id));
-    setActiveChatId((prev) => (prev === id ? null : prev));
+    setChats(prev => prev.filter(chat => chat.id !== id));
+    setActiveChatId(prev => (prev === id ? null : prev));
+    db(dbDeleteChat(id));
     toast.success('Conversation deleted');
+  }, []);
+
+  const handleArchiveChat = useCallback((id: string) => {
+    setChats(prev => prev.filter(chat => chat.id !== id));
+    setActiveChatId(prev => (prev === id ? null : prev));
+    db(dbArchiveChat(id));
+    toast.success('Conversation archived');
   }, []);
 
   const handleRenameChat = useCallback((id: string, newTitle: string) => {
     const trimmed = newTitle.trim();
     if (!trimmed) return;
-    setChats((prev) =>
-      prev.map((chat) => (chat.id === id ? { ...chat, title: trimmed } : chat))
+    setChats(prev =>
+      prev.map(chat => (chat.id === id ? { ...chat, title: trimmed } : chat))
     );
+    db(dbUpdateChat(id, { title: trimmed }));
   }, []);
 
-  // Stop current stream immediately; keep any partial content already received.
   const handleStopStreaming = useCallback(() => {
     cancelStreamRef.current?.();
     cancelStreamRef.current = null;
     setIsTyping(false);
-    // Finalize any message still marked as streaming — preserve partial content.
-    setChats((prev) =>
-      prev.map((chat) => ({
+
+    // Persist partial AI message content before clearing isStreaming
+    const ctx = streamingCtxRef.current;
+    if (ctx) {
+      const chat = chatsRef.current.find(c => c.id === ctx.chatId);
+      const msg = chat?.messages.find(m => m.id === ctx.messageId);
+      if (msg) {
+        db(dbAddMessage(ctx.chatId, { ...msg, isStreaming: undefined }));
+      }
+      streamingCtxRef.current = null;
+    }
+
+    setChats(prev =>
+      prev.map(chat => ({
         ...chat,
-        messages: chat.messages.map((msg) =>
+        messages: chat.messages.map(msg =>
           msg.isStreaming ? { ...msg, isStreaming: false } : msg
         ),
       }))
@@ -127,7 +202,6 @@ export function useChats(
 
       let currentChatId = activeChatId;
 
-      // If no active chat, create one inline
       if (!currentChatId) {
         const newChat: ChatSession = {
           id: `chat-${Date.now()}`,
@@ -136,9 +210,10 @@ export function useChats(
           updatedAt: Date.now(),
           messages: [],
         };
-        setChats((prev) => [newChat, ...prev]);
+        setChats(prev => [newChat, ...prev]);
         currentChatId = newChat.id;
         setActiveChatId(currentChatId);
+        db(dbCreateChat(newChat));
       }
 
       const userMessage: Message = {
@@ -148,9 +223,8 @@ export function useChats(
         timestamp: Date.now(),
       };
 
-      // Append user message; set title on first message of a new chat
-      setChats((prev) =>
-        prev.map((chat) => {
+      setChats(prev =>
+        prev.map(chat => {
           if (chat.id !== currentChatId) return chat;
           const newTitle =
             chat.title === 'New Chat' && chat.messages.length === 0
@@ -164,14 +238,13 @@ export function useChats(
           };
         })
       );
+      db(dbAddMessage(currentChatId, userMessage));
 
       // ── Streaming response ────────────────────────────────────────────────
+
       setIsTyping(true);
       const aiMessageId = `msg-ai-${Date.now()}`;
 
-      // Add the AI placeholder immediately so the streaming message exists;
-      // isTyping stays true until the first token arrives (keeps indicator visible
-      // during the full cold-start latency of local models).
       const placeholder: Message = {
         id: aiMessageId,
         role: 'ai',
@@ -179,18 +252,20 @@ export function useChats(
         timestamp: Date.now(),
         isStreaming: true,
       };
-      setChats((prev) =>
-        prev.map((chat) =>
+
+      setChats(prev =>
+        prev.map(chat =>
           chat.id === currentChatId
             ? { ...chat, messages: [...chat.messages, placeholder] }
             : chat
         )
       );
 
-      // Build history including the new user message for context
-      const currentMessages = chats.find((c) => c.id === currentChatId)?.messages ?? [];
+      streamingCtxRef.current = { chatId: currentChatId, messageId: aiMessageId };
+
+      const currentMessages = chatsRef.current.find(c => c.id === currentChatId)?.messages ?? [];
       const history = [
-        ...currentMessages.map((m) => ({
+        ...currentMessages.map(m => ({
           role: (m.role === 'ai' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: m.content,
         })),
@@ -200,14 +275,13 @@ export function useChats(
       const cancel = getStreamFn(activeProvider, activeModel)(
         history,
         (token) => {
-          // Hide the typing indicator on the very first token — model has started responding.
           setIsTyping(false);
-          setChats((prev) =>
-            prev.map((chat) => {
+          setChats(prev =>
+            prev.map(chat => {
               if (chat.id !== currentChatId) return chat;
               return {
                 ...chat,
-                messages: chat.messages.map((msg) =>
+                messages: chat.messages.map(msg =>
                   msg.id === aiMessageId
                     ? { ...msg, content: msg.content + token }
                     : msg
@@ -218,94 +292,113 @@ export function useChats(
         },
         () => {
           setIsTyping(false);
-          setChats((prev) =>
-            prev.map((chat) => {
+          const now = Date.now();
+          setChats(prev =>
+            prev.map(chat => {
               if (chat.id !== currentChatId) return chat;
               return {
                 ...chat,
-                updatedAt: Date.now(),
-                messages: chat.messages.map((msg) =>
+                updatedAt: now,
+                messages: chat.messages.map(msg =>
                   msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
                 ),
               };
             })
           );
+          // Persist complete AI message and update session timestamp
+          const finalContent =
+            chatsRef.current
+              .find(c => c.id === currentChatId)
+              ?.messages.find(m => m.id === aiMessageId)?.content ?? '';
+          db(dbAddMessage(currentChatId, {
+            id: aiMessageId,
+            role: 'ai',
+            content: finalContent,
+            timestamp: placeholder.timestamp,
+          }));
+          db(dbUpdateChat(currentChatId, { updatedAt: now }));
+          streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
           setIsTyping(false);
-          setChats((prev) =>
-            prev.map((chat) => {
+          const errContent = '(Error — could not reach model)';
+          setChats(prev =>
+            prev.map(chat => {
               if (chat.id !== currentChatId) return chat;
               return {
                 ...chat,
-                messages: chat.messages.map((msg) =>
+                messages: chat.messages.map(msg =>
                   msg.id === aiMessageId
-                    ? { ...msg, content: '(Error — could not reach model)', isStreaming: false }
+                    ? { ...msg, content: errContent, isStreaming: false }
                     : msg
                 ),
               };
             })
           );
+          db(dbAddMessage(currentChatId, {
+            id: aiMessageId,
+            role: 'ai',
+            content: errContent,
+            timestamp: placeholder.timestamp,
+          }));
           toast.error(err.message);
+          streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         }
       );
 
       cancelStreamRef.current = cancel;
     },
-    [activeChatId, cancelActiveStream, chats, activeProvider, activeModel]
+    [activeChatId, cancelActiveStream, activeProvider, activeModel]
   );
 
   // ── Message action handlers ────────────────────────────────────────────────
 
   const handleCopyMessage = useCallback(
     (messageId: string) => {
-      // Target only the active chat — avoids O(n×m) flatMap scan across all chats
-      const chat = chats.find((c) => c.id === activeChatId);
-      const message = chat?.messages.find((m) => m.id === messageId);
+      const chat = chatsRef.current.find(c => c.id === activeChatId);
+      const message = chat?.messages.find(m => m.id === messageId);
       if (!message) return;
-
       navigator.clipboard
         .writeText(message.content)
         .then(() => toast.success('Copied to clipboard'))
         .catch(() => toast.error('Could not access clipboard'));
     },
-    [chats, activeChatId]
+    [activeChatId]
   );
 
   const handleDeleteMessage = useCallback((chatId: string, messageId: string) => {
-    setChats((prev) =>
-      prev.map((chat) =>
+    setChats(prev =>
+      prev.map(chat =>
         chat.id === chatId
-          ? {
-              ...chat,
-              messages: chat.messages.filter((m) => m.id !== messageId),
-              updatedAt: Date.now(),
-            }
+          ? { ...chat, messages: chat.messages.filter(m => m.id !== messageId), updatedAt: Date.now() }
           : chat
       )
     );
+    db(dbDeleteMessage(chatId, messageId));
     toast('Message deleted', { icon: '🗑️' });
   }, []);
 
   const handleEditMessage = useCallback(
     (chatId: string, messageId: string, newContent: string) => {
-      setChats((prev) =>
-        prev.map((chat) =>
+      const now = Date.now();
+      setChats(prev =>
+        prev.map(chat =>
           chat.id === chatId
             ? {
                 ...chat,
-                messages: chat.messages.map((m) =>
+                messages: chat.messages.map(m =>
                   m.id === messageId
-                    ? { ...m, content: newContent, isEdited: true, editedAt: Date.now() }
+                    ? { ...m, content: newContent, isEdited: true, editedAt: now }
                     : m
                 ),
-                updatedAt: Date.now(),
+                updatedAt: now,
               }
             : chat
         )
       );
+      db(dbUpdateMessage(chatId, messageId, { content: newContent, isEdited: true, editedAt: now }));
       toast.success('Message updated');
     },
     []
@@ -315,14 +408,14 @@ export function useChats(
     (chatId: string, messageId: string) => {
       cancelActiveStream();
 
-      // Remove the old AI message
-      setChats((prev) =>
-        prev.map((chat) =>
+      setChats(prev =>
+        prev.map(chat =>
           chat.id === chatId
-            ? { ...chat, messages: chat.messages.filter((m) => m.id !== messageId) }
+            ? { ...chat, messages: chat.messages.filter(m => m.id !== messageId) }
             : chat
         )
       );
+      db(dbDeleteMessage(chatId, messageId));
 
       const toastId = toast.loading('Regenerating response…');
       const newAiId = `msg-ai-${Date.now()}`;
@@ -335,19 +428,19 @@ export function useChats(
         isStreaming: true,
       };
 
-      setChats((prev) =>
-        prev.map((chat) =>
+      setChats(prev =>
+        prev.map(chat =>
           chat.id === chatId
             ? { ...chat, messages: [...chat.messages, placeholder] }
             : chat
         )
       );
 
-      // Read history before setChats removal flush — exclude the regenerated message
-      const chatSnapshot = chats.find((c) => c.id === chatId);
-      const history = (chatSnapshot?.messages ?? [])
-        .filter((m) => m.id !== messageId)
-        .map((m) => ({
+      streamingCtxRef.current = { chatId, messageId: newAiId };
+
+      const history = (chatsRef.current.find(c => c.id === chatId)?.messages ?? [])
+        .filter(m => m.id !== messageId)
+        .map(m => ({
           role: (m.role === 'ai' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: m.content,
         }));
@@ -355,12 +448,12 @@ export function useChats(
       const cancel = getStreamFn(activeProvider, activeModel)(
         history,
         (token) => {
-          setChats((prev) =>
-            prev.map((chat) => {
+          setChats(prev =>
+            prev.map(chat => {
               if (chat.id !== chatId) return chat;
               return {
                 ...chat,
-                messages: chat.messages.map((msg) =>
+                messages: chat.messages.map(msg =>
                   msg.id === newAiId ? { ...msg, content: msg.content + token } : msg
                 ),
               };
@@ -368,64 +461,88 @@ export function useChats(
           );
         },
         () => {
-          setChats((prev) =>
-            prev.map((chat) => {
+          const now = Date.now();
+          setChats(prev =>
+            prev.map(chat => {
               if (chat.id !== chatId) return chat;
               return {
                 ...chat,
-                updatedAt: Date.now(),
-                messages: chat.messages.map((msg) =>
+                updatedAt: now,
+                messages: chat.messages.map(msg =>
                   msg.id === newAiId ? { ...msg, isStreaming: false } : msg
                 ),
               };
             })
           );
+          const finalContent =
+            chatsRef.current
+              .find(c => c.id === chatId)
+              ?.messages.find(m => m.id === newAiId)?.content ?? '';
+          db(dbAddMessage(chatId, {
+            id: newAiId,
+            role: 'ai',
+            content: finalContent,
+            timestamp: placeholder.timestamp,
+          }));
+          db(dbUpdateChat(chatId, { updatedAt: now }));
           toast.success('Response regenerated', { id: toastId });
+          streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
-          setChats((prev) =>
-            prev.map((chat) => {
+          const errContent = '(Error — could not reach model)';
+          setChats(prev =>
+            prev.map(chat => {
               if (chat.id !== chatId) return chat;
               return {
                 ...chat,
-                messages: chat.messages.map((msg) =>
+                messages: chat.messages.map(msg =>
                   msg.id === newAiId
-                    ? { ...msg, content: '(Error — could not reach model)', isStreaming: false }
+                    ? { ...msg, content: errContent, isStreaming: false }
                     : msg
                 ),
               };
             })
           );
+          db(dbAddMessage(chatId, {
+            id: newAiId,
+            role: 'ai',
+            content: errContent,
+            timestamp: placeholder.timestamp,
+          }));
           toast.error(err.message, { id: toastId });
+          streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         }
       );
 
       cancelStreamRef.current = cancel;
     },
-    [cancelActiveStream, chats, activeProvider, activeModel]
+    [cancelActiveStream, activeProvider, activeModel]
   );
 
   const handleClearHistory = useCallback(() => {
     cancelActiveStream();
     setChats([]);
     setActiveChatId(null);
+    db(dbDeleteAllChats());
     clearAllStorage();
     toast.success('Chat history cleared');
   }, [cancelActiveStream]);
 
-  const activeChat = chats.find((c) => c.id === activeChatId) ?? null;
+  const activeChat = chats.find(c => c.id === activeChatId) ?? null;
 
   return {
     chats,
     activeChatId,
     activeChat,
     isTyping,
+    dbReady,
     handleNewChat,
     handleSelectChat,
     handleTogglePin,
     handleDeleteChat,
+    handleArchiveChat,
     handleRenameChat,
     handleStopStreaming,
     handleSendMessage,

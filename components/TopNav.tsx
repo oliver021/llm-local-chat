@@ -1,9 +1,32 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Theme } from '../types';
 import { Menu, Sun, Moon, Sparkles, Cpu } from './Icons';
 import { useChatActions } from '../context/ChatContext';
 import type { ProviderKey } from '../hooks/useProvider';
 import { PROVIDER_META } from '../hooks/useProvider';
+
+const ArchiveIcon = ({ size = 15 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="20" height="5" rx="1" />
+    <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+    <path d="M10 12h4" />
+  </svg>
+);
+
+const LogOutIcon = ({ size = 15 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <polyline points="16 17 21 12 16 7" />
+    <line x1="21" y1="12" x2="9" y2="12" />
+  </svg>
+);
+
+const UserIcon = ({ size = 15 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
 
 interface TopNavProps {
   theme: Theme;
@@ -12,6 +35,7 @@ interface TopNavProps {
   currentChatTitle?: string;
   activeProvider?: ProviderKey;
   activeModel?: string;
+  onOpenArchived: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -21,12 +45,35 @@ export const TopNav: React.FC<TopNavProps> = ({
   currentChatTitle,
   activeProvider,
   activeModel,
+  onOpenArchived,
 }) => {
   const { openModelSelector } = useChatActions();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
   const providerLabel = activeProvider
     ? PROVIDER_META.find((p) => p.key === activeProvider)?.shortLabel
     : undefined;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!profileOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [profileOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!profileOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setProfileOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [profileOpen]);
 
   return (
     <header className="h-16 flex-shrink-0 flex items-center justify-between px-4 md:px-6 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800/50 sticky top-0 z-10">
@@ -83,10 +130,56 @@ export const TopNav: React.FC<TopNavProps> = ({
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
         </button>
 
-        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-500 p-[2px] cursor-pointer hover:shadow-md transition-shadow">
-          <div className="w-full h-full rounded-full border-2 border-white dark:border-gray-950 overflow-hidden">
-            <img src="https://picsum.photos/100/100?random=1" alt="User" className="w-full h-full object-cover" />
-          </div>
+        {/* Profile avatar + dropdown */}
+        <div className="relative" ref={profileRef}>
+          <button
+            onClick={() => setProfileOpen(o => !o)}
+            className="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-500 p-[2px] cursor-pointer hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 dark:focus:ring-offset-gray-950"
+            aria-label="Profile menu"
+            aria-expanded={profileOpen}
+          >
+            <div className="w-full h-full rounded-full border-2 border-white dark:border-gray-950 overflow-hidden">
+              <img src="https://picsum.photos/100/100?random=1" alt="User" className="w-full h-full object-cover" />
+            </div>
+          </button>
+
+          {profileOpen && (
+            <div className="absolute right-0 top-full mt-2 w-52 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden py-1 z-50">
+              {/* Profile info */}
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">My Account</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">Local session</p>
+              </div>
+
+              <div className="py-1">
+                <button
+                  onClick={() => { setProfileOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                >
+                  <UserIcon size={15} />
+                  Profile
+                </button>
+
+                <button
+                  onClick={() => { setProfileOpen(false); onOpenArchived(); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                >
+                  <ArchiveIcon size={15} />
+                  Archived Chats
+                </button>
+              </div>
+
+              <div className="border-t border-gray-100 dark:border-gray-700 py-1">
+                <button
+                  onClick={() => setProfileOpen(false)}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                >
+                  <LogOutIcon size={15} />
+                  Sign out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>
