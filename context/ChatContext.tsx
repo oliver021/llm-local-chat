@@ -94,6 +94,9 @@ interface ChatActionsContextValue {
    * matches the pattern of the other handlers but refers to a chat, not a pin.
    */
   handleTogglePin: (id: string) => void;
+  handleDeleteChat: (id: string) => void;
+  handleRenameChat: (id: string, newTitle: string) => void;
+  handleStopStreaming: () => void;
 
   /**
    * Open the Settings modal.
@@ -109,6 +112,13 @@ interface ChatActionsContextValue {
    * Implemented in: hooks/useUIState.ts → openSettings, wired in App.tsx.
    */
   openSettings: () => void;
+
+  /**
+   * Open the Model Selector modal.
+   * Pure UI action — sets `modelSelectorOpen: true` in useUIState.
+   * Placed here so TopNav can call it via useChatActions() without a prop chain.
+   */
+  openModelSelector: () => void;
 
   /**
    * Copy a message's text content to the system clipboard.

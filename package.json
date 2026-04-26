@@ -1,5 +1,5 @@
 {
-  "name": "aura-chat-frontend",
+  "name": "llm-local-chat",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -21,7 +21,9 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
     "lucide-react": "latest",
+    "openai": "^6.34.0",
     "react": "latest",
     "react-dom": "latest",
     "react-markdown": "^10.1.0",

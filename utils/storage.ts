@@ -1,10 +1,15 @@
 import { ChatSession, Theme } from '../types';
+import type { ProviderKey } from '../hooks/useProvider';
 
 const STORAGE_KEYS = {
-  CHATS: 'AURA_CHATS',
-  THEME: 'AURA_THEME',
+  CHATS:    'AURA_CHATS',
+  THEME:    'AURA_THEME',
   UI_STATE: 'AURA_UI_STATE',
+  PROVIDER: 'LLM_ACTIVE_PROVIDER',
+  MODEL:    'LLM_ACTIVE_MODEL',
 } as const;
+
+const VALID_PROVIDERS: ProviderKey[] = ['llm-llamacpp', 'llm-openai', 'llm-claude', 'llm-ollama'];
 
 // ── Generic helpers ────────────────────────────────────────────────────────────
 // Centralises all try/catch boilerplate so individual getters/setters stay lean.
@@ -77,11 +82,31 @@ export function setStoredUIState(state: UIState): void {
   storageSet(STORAGE_KEYS.UI_STATE, state);
 }
 
+export function getStoredProvider(fallback: ProviderKey): ProviderKey {
+  const stored = storageGet<string>(STORAGE_KEYS.PROVIDER, '');
+  return (VALID_PROVIDERS as string[]).includes(stored) ? (stored as ProviderKey) : fallback;
+}
+
+export function setStoredProvider(provider: ProviderKey): void {
+  storageSet(STORAGE_KEYS.PROVIDER, provider);
+}
+
+export function getStoredModel(fallback: string): string {
+  const stored = storageGet<string>(STORAGE_KEYS.MODEL, '');
+  return stored || fallback;
+}
+
+export function setStoredModel(model: string): void {
+  storageSet(STORAGE_KEYS.MODEL, model);
+}
+
 export function clearAllStorage(): void {
   try {
     localStorage.removeItem(STORAGE_KEYS.CHATS);
     localStorage.removeItem(STORAGE_KEYS.THEME);
     localStorage.removeItem(STORAGE_KEYS.UI_STATE);
+    localStorage.removeItem(STORAGE_KEYS.PROVIDER);
+    localStorage.removeItem(STORAGE_KEYS.MODEL);
   } catch (error) {
     console.warn('Failed to clear localStorage:', error);
   }

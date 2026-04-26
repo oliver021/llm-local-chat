@@ -2,30 +2,96 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project
+
+**llm-local-chat** — a React + TypeScript chat UI template (ChatGPT-like interface) that ships with a complete UI shell and a mock AI service, designed to be wired to any real LLM backend.
+
+Key docs:
+- **`roadmap.md`** — full feature status, phase-by-phase implementation plan, and what's UI-only vs functional
+- **`connecting.md`** — data contracts, function signatures, and integration patterns every agent needs before touching backend code
+- **`.claude/llm-connection-example-specs.yaml`** — backend YAML config schema
+
 ## Commands
 
 ```bash
-npm run dev      # Start dev server (Vite)
-npm run build    # Production build
-npm run preview  # Preview production build
+npm run dev          # Start dev server (Vite, port 5173)
+npm run build        # Production build → dist/
+npm run preview      # Preview production build
+npm run type-check   # TypeScript check (no emit)
+npm run lint         # ESLint
+npm test             # Vitest unit tests
+npm run test:e2e     # Playwright E2E tests
 ```
-
-No lint or test scripts are configured.
 
 ## Architecture
 
-This is a React + TypeScript chat UI template (ChatGPT-like interface) using Vite and Tailwind CSS (loaded via CDN in `index.html`, not PostCSS).
-
-**State management** lives entirely in `App.tsx` — there is no external state library. All state (active chat, theme, sidebar visibility, chat sessions) is managed with `useState`/`useCallback` and passed as props down the tree.
+**State management** lives in `hooks/useChats.ts`. All chat state (sessions, streaming lifecycle, cancel) is managed with `useState`/`useCallback` and distributed via `context/ChatContext.tsx`.
 
 **Data flow:**
-- `App.tsx` holds all chat sessions and dispatches updates
-- Mock AI responses are generated from a pool in `constants.ts` with a simulated 1-2s delay
-- No real API integration exists; `vite.config.ts` has proxy routes stubbed but unused
+```
+components/ → context/ChatContext.tsx → hooks/useChats.ts → services/<provider>Service.ts → LLM
+                                                          → utils/storage.ts → localStorage
+```
 
 **Key files:**
 - `types.ts` — `Message`, `ChatSession`, `Theme` type definitions
-- `constants.ts` — initial mock chat data and AI response strings
-- `components/Icons.tsx` — wraps `lucide-react` icons used throughout
+- `constants.ts` — mock chat data and AI response strings
+- `services/mockAiService.ts` — streaming mock (keep for tests; replace for real use)
+- `services/llamaCppService.ts` — **live llama.cpp/llama-server integration** (Phase 1 ✅)
+- `hooks/useChats.ts` — **primary integration seam** — swap provider import here
+- `context/ChatContext.tsx` — action dispatcher; do not touch for backend work
+- `utils/storage.ts` — localStorage persistence (chats, theme, UI state)
 
-**Styling:** Tailwind classes only; custom theme colors and fonts are configured inside the `<script>` tag in `index.html`, not in a `tailwind.config.js` file.
+**Styling:** Tailwind CDN only. Custom theme colors and fonts are in the `<script>` tag in `index.html`, not in a config file.
+
+## Integration — Two-Point Model
+
+Every provider swap touches exactly two places (see `connecting.md` for full contracts):
+
+1. **`services/<provider>Service.ts`** — the only file that talks to the network  
+   Required signature:
+   ```ts
+   function streamXxxResponse(
+     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+     onChunk:  (chunk: string) => void,
+     onDone:   () => void,
+     onError:  (err: Error) => void
+   ): () => void   // cancel function
+   ```
+
+2. **`hooks/useChats.ts`** — swap the import at two call sites:
+   - `handleSendMessage` (~line 153)
+   - `handleRegenerateMessage` (~line 260)
+
+Role mapping — always apply before building history:
+```ts
+role: m.role === 'ai' ? 'assistant' : 'user'
+```
+
+## LLM Provider Roadmap
+
+See `roadmap.md` for full implementation details per phase.
+
+| Phase | Provider | Type | Config key | Status |
+|---|---|---|---|---|
+| 1 | llama.cpp / llama-server | Local (Docker) | `llm-llamacpp` | ✅ Done |
+| 2 | OpenAI | Cloud API | `llm-openai` | Planned |
+| 3 | Anthropic Claude | Cloud API | `llm-claude` | Planned |
+| 4 | Ollama | Local | `llm-ollama` | Planned |
+| 5 | Provider selector UI | — | — | Planned |
+
+## Docker Quick-Start (Phase 1)
+
+```bash
+# Place a GGUF model
+cp your-model.gguf ./models/model.gguf
+
+# Build and run
+docker compose up --build
+# → http://localhost:3000
+
+# Dev without Docker
+./llama-server -m ./models/model.gguf --host 0.0.0.0 --port 8080
+npm run dev
+# → http://localhost:5173 (Vite proxy: /v1 → localhost:8080)
+```

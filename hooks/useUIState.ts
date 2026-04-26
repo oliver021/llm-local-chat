@@ -4,6 +4,7 @@ import { getStoredUIState, setStoredUIState } from '../utils/storage';
 interface UIState {
   sidebarOpen: boolean;
   settingsOpen: boolean;
+  modelSelectorOpen: boolean;
   compactMode: boolean;
   dataCollection: boolean;
   chatHistory: boolean;
@@ -11,6 +12,8 @@ interface UIState {
   closeSidebar: () => void;
   openSettings: () => void;
   closeSettings: () => void;
+  openModelSelector: () => void;
+  closeModelSelector: () => void;
   toggleCompactMode: () => void;
   toggleDataCollection: () => void;
   toggleChatHistory: () => void;
@@ -22,6 +25,7 @@ export function useUIState(): UIState {
   const stored = getStoredUIState(DEFAULT_UI_STATE);
   const [sidebarOpen, setSidebarOpen] = useState(stored.sidebarOpen);
   const [settingsOpen, setSettingsOpen] = useState(stored.settingsOpen);
+  const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const [compactMode, setCompactMode] = useState(stored.compactMode);
   const [dataCollection, setDataCollection] = useState(stored.dataCollection);
   const [chatHistory, setChatHistory] = useState(stored.chatHistory);
@@ -35,9 +39,11 @@ export function useUIState(): UIState {
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const openModelSelector = useCallback(() => setModelSelectorOpen(true), []);
+  const closeModelSelector = useCallback(() => setModelSelectorOpen(false), []);
   const toggleCompactMode = useCallback(() => setCompactMode(prev => !prev), []);
   const toggleDataCollection = useCallback(() => setDataCollection(prev => !prev), []);
   const toggleChatHistory = useCallback(() => setChatHistory(prev => !prev), []);
 
-  return { sidebarOpen, settingsOpen, compactMode, dataCollection, chatHistory, openSidebar, closeSidebar, openSettings, closeSettings, toggleCompactMode, toggleDataCollection, toggleChatHistory };
+  return { sidebarOpen, settingsOpen, modelSelectorOpen, compactMode, dataCollection, chatHistory, openSidebar, closeSidebar, openSettings, closeSettings, openModelSelector, closeModelSelector, toggleCompactMode, toggleDataCollection, toggleChatHistory };
 }

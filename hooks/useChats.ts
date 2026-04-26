@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { ChatSession, Message } from '../types';
 import { MOCK_CHATS } from '../constants';
-import { streamMockAiResponse } from '../services/mockAiService';
+import { getStreamFn } from '../services/providerDispatch';
+import type { ProviderKey } from './useProvider';
 import { getStoredChats, setStoredChats, clearAllStorage } from '../utils/storage';
 import { makeChatTitle } from '../utils/chatUtils';
 
@@ -14,6 +15,9 @@ interface UseChatsResult {
   handleNewChat: () => void;
   handleSelectChat: (id: string) => void;
   handleTogglePin: (id: string) => void;
+  handleDeleteChat: (id: string) => void;
+  handleRenameChat: (id: string, newTitle: string) => void;
+  handleStopStreaming: () => void;
   handleSendMessage: (content: string) => void;
   handleCopyMessage: (messageId: string) => void;
   handleDeleteMessage: (chatId: string, messageId: string) => void;
@@ -22,7 +26,11 @@ interface UseChatsResult {
   handleClearHistory: () => void;
 }
 
-export function useChats(onMobileNavigate?: () => void): UseChatsResult {
+export function useChats(
+  onMobileNavigate?: () => void,
+  activeProvider: ProviderKey = 'llm-llamacpp',
+  activeModel = 'model.gguf'
+): UseChatsResult {
   const [chats, setChats] = useState<ChatSession[]>(() => getStoredChats(MOCK_CHATS));
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
@@ -81,6 +89,36 @@ export function useChats(onMobileNavigate?: () => void): UseChatsResult {
     );
   }, []);
 
+  const handleDeleteChat = useCallback((id: string) => {
+    setChats((prev) => prev.filter((chat) => chat.id !== id));
+    setActiveChatId((prev) => (prev === id ? null : prev));
+    toast.success('Conversation deleted');
+  }, []);
+
+  const handleRenameChat = useCallback((id: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    setChats((prev) =>
+      prev.map((chat) => (chat.id === id ? { ...chat, title: trimmed } : chat))
+    );
+  }, []);
+
+  // Stop current stream immediately; keep any partial content already received.
+  const handleStopStreaming = useCallback(() => {
+    cancelStreamRef.current?.();
+    cancelStreamRef.current = null;
+    setIsTyping(false);
+    // Finalize any message still marked as streaming — preserve partial content.
+    setChats((prev) =>
+      prev.map((chat) => ({
+        ...chat,
+        messages: chat.messages.map((msg) =>
+          msg.isStreaming ? { ...msg, isStreaming: false } : msg
+        ),
+      }))
+    );
+  }, []);
+
   // ── Messaging handlers ─────────────────────────────────────────────────────
 
   const handleSendMessage = useCallback(
@@ -131,28 +169,39 @@ export function useChats(onMobileNavigate?: () => void): UseChatsResult {
       setIsTyping(true);
       const aiMessageId = `msg-ai-${Date.now()}`;
 
-      // Brief delay so the typing indicator renders before the first token
-      const placeholderDelay = setTimeout(() => {
-        setIsTyping(false);
-        const placeholder: Message = {
-          id: aiMessageId,
-          role: 'ai',
-          content: '',
-          timestamp: Date.now(),
-          isStreaming: true,
-        };
-        setChats((prev) =>
-          prev.map((chat) =>
-            chat.id === currentChatId
-              ? { ...chat, messages: [...chat.messages, placeholder] }
-              : chat
-          )
-        );
-      }, 380);
+      // Add the AI placeholder immediately so the streaming message exists;
+      // isTyping stays true until the first token arrives (keeps indicator visible
+      // during the full cold-start latency of local models).
+      const placeholder: Message = {
+        id: aiMessageId,
+        role: 'ai',
+        content: '',
+        timestamp: Date.now(),
+        isStreaming: true,
+      };
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === currentChatId
+            ? { ...chat, messages: [...chat.messages, placeholder] }
+            : chat
+        )
+      );
 
-      const cancel = streamMockAiResponse(
+      // Build history including the new user message for context
+      const currentMessages = chats.find((c) => c.id === currentChatId)?.messages ?? [];
+      const history = [
+        ...currentMessages.map((m) => ({
+          role: (m.role === 'ai' ? 'assistant' : 'user') as 'user' | 'assistant',
+          content: m.content,
+        })),
+        { role: 'user' as const, content },
+      ];
+
+      const cancel = getStreamFn(activeProvider, activeModel)(
+        history,
         (token) => {
-          clearTimeout(placeholderDelay);
+          // Hide the typing indicator on the very first token — model has started responding.
+          setIsTyping(false);
           setChats((prev) =>
             prev.map((chat) => {
               if (chat.id !== currentChatId) return chat;
@@ -182,12 +231,30 @@ export function useChats(onMobileNavigate?: () => void): UseChatsResult {
             })
           );
           cancelStreamRef.current = null;
+        },
+        (err) => {
+          setIsTyping(false);
+          setChats((prev) =>
+            prev.map((chat) => {
+              if (chat.id !== currentChatId) return chat;
+              return {
+                ...chat,
+                messages: chat.messages.map((msg) =>
+                  msg.id === aiMessageId
+                    ? { ...msg, content: '(Error — could not reach model)', isStreaming: false }
+                    : msg
+                ),
+              };
+            })
+          );
+          toast.error(err.message);
+          cancelStreamRef.current = null;
         }
       );
 
       cancelStreamRef.current = cancel;
     },
-    [activeChatId, cancelActiveStream]
+    [activeChatId, cancelActiveStream, chats, activeProvider, activeModel]
   );
 
   // ── Message action handlers ────────────────────────────────────────────────
@@ -276,7 +343,17 @@ export function useChats(onMobileNavigate?: () => void): UseChatsResult {
         )
       );
 
-      const cancel = streamMockAiResponse(
+      // Read history before setChats removal flush — exclude the regenerated message
+      const chatSnapshot = chats.find((c) => c.id === chatId);
+      const history = (chatSnapshot?.messages ?? [])
+        .filter((m) => m.id !== messageId)
+        .map((m) => ({
+          role: (m.role === 'ai' ? 'assistant' : 'user') as 'user' | 'assistant',
+          content: m.content,
+        }));
+
+      const cancel = getStreamFn(activeProvider, activeModel)(
+        history,
         (token) => {
           setChats((prev) =>
             prev.map((chat) => {
@@ -305,12 +382,29 @@ export function useChats(onMobileNavigate?: () => void): UseChatsResult {
           );
           toast.success('Response regenerated', { id: toastId });
           cancelStreamRef.current = null;
+        },
+        (err) => {
+          setChats((prev) =>
+            prev.map((chat) => {
+              if (chat.id !== chatId) return chat;
+              return {
+                ...chat,
+                messages: chat.messages.map((msg) =>
+                  msg.id === newAiId
+                    ? { ...msg, content: '(Error — could not reach model)', isStreaming: false }
+                    : msg
+                ),
+              };
+            })
+          );
+          toast.error(err.message, { id: toastId });
+          cancelStreamRef.current = null;
         }
       );
 
       cancelStreamRef.current = cancel;
     },
-    [cancelActiveStream]
+    [cancelActiveStream, chats, activeProvider, activeModel]
   );
 
   const handleClearHistory = useCallback(() => {
@@ -331,6 +425,9 @@ export function useChats(onMobileNavigate?: () => void): UseChatsResult {
     handleNewChat,
     handleSelectChat,
     handleTogglePin,
+    handleDeleteChat,
+    handleRenameChat,
+    handleStopStreaming,
     handleSendMessage,
     handleCopyMessage,
     handleDeleteMessage,

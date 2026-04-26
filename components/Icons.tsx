@@ -20,7 +20,20 @@ import {
   Copy,
   Pencil,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Cpu,
+  ChevronRight,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  ExternalLink,
+  Download,
+  Search,
+  Heart,
+  Info,
+  ChevronDown,
+  Star,
+  Square,
 } from 'lucide-react';
 
 interface ColorfulIconProps {
@@ -56,5 +69,18 @@ export {
   Copy,
   Pencil,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Cpu,
+  ChevronRight,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  ExternalLink,
+  Download,
+  Search,
+  Heart,
+  Info,
+  ChevronDown,
+  Star,
+  Square,
 };

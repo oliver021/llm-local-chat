@@ -5,16 +5,25 @@ import { TopNav } from './components/TopNav';
 import { ChatArea } from './components/ChatArea';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { SettingsModal } from './components/Settings';
+import { ModelSelectorModal } from './components/ModelSelectorModal';
 import { ChatActionsProvider } from './context/ChatContext';
 import { useTheme } from './hooks/useTheme';
 import { useUIState } from './hooks/useUIState';
 import { useChats } from './hooks/useChats';
+import { useProvider } from './hooks/useProvider';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 const App: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
-  const { sidebarOpen, settingsOpen, openSidebar, closeSidebar, openSettings, closeSettings } =
-    useUIState();
+  const {
+    sidebarOpen, settingsOpen, modelSelectorOpen,
+    openSidebar, closeSidebar,
+    openSettings, closeSettings,
+    openModelSelector, closeModelSelector,
+  } = useUIState();
+
+  const { activeProvider, activeModel, setProviderAndModel } = useProvider();
+
   const {
     chats,
     activeChatId,
@@ -23,13 +32,16 @@ const App: React.FC = () => {
     handleNewChat,
     handleSelectChat,
     handleTogglePin,
+    handleDeleteChat,
+    handleRenameChat,
+    handleStopStreaming,
     handleSendMessage,
     handleCopyMessage,
     handleDeleteMessage,
     handleEditMessage,
     handleRegenerateMessage,
     handleClearHistory,
-  } = useChats(closeSidebar);
+  } = useChats(closeSidebar, activeProvider, activeModel);
 
   // Ref forwarded to ChatInput so the keyboard shortcut can focus it
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -56,7 +68,11 @@ const App: React.FC = () => {
         handleNewChat,
         handleSelectChat,
         handleTogglePin,
+        handleDeleteChat,
+        handleRenameChat,
+        handleStopStreaming,
         openSettings,
+        openModelSelector,
         handleCopyMessage,
         handleDeleteMessage,
         handleEditMessage,
@@ -79,6 +95,8 @@ const App: React.FC = () => {
           onSelectChat={handleSelectChat}
           onNewChat={handleNewChat}
           onTogglePin={handleTogglePin}
+          onDeleteChat={handleDeleteChat}
+          onRenameChat={handleRenameChat}
           onOpenSettings={openSettings}
           isOpen={sidebarOpen}
         />
@@ -92,6 +110,8 @@ const App: React.FC = () => {
             toggleTheme={toggleTheme}
             toggleSidebar={openSidebar}
             currentChatTitle={activeChat?.title !== 'New Chat' ? activeChat?.title : undefined}
+            activeProvider={activeProvider}
+            activeModel={activeModel}
           />
           {/* ErrorBoundary isolates crashes to the chat area; sidebar + settings survive */}
           <ErrorBoundary>
@@ -100,6 +120,14 @@ const App: React.FC = () => {
         </main>
 
         <SettingsModal isOpen={settingsOpen} onClose={closeSettings} />
+
+        <ModelSelectorModal
+          isOpen={modelSelectorOpen}
+          onClose={closeModelSelector}
+          activeProvider={activeProvider}
+          activeModel={activeModel}
+          onSelect={setProviderAndModel}
+        />
       </div>
 
       {/*

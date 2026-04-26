@@ -11,9 +11,15 @@ export default defineConfig(({ mode }) => {
       },
       server: {
         proxy: {
-          //Target your Node.js backend
-          '/api-proxy': 'http://localhost:5000',
-          '/ws-proxy': {target: 'ws://localhost:5000', ws: true},
+          '/v1': {
+            target: 'http://localhost:8080',   // llama-server
+            changeOrigin: true,
+          },
+          '/ollama': {
+            target: 'http://localhost:11434',  // Ollama local server
+            changeOrigin: true,
+            rewrite: (path: string) => path.replace(/^\/ollama/, ''),
+          },
         },
       },
       plugins: react(),

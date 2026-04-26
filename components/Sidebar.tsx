@@ -9,6 +9,8 @@ interface SidebarProps {
   onSelectChat: (id: string) => void;
   onNewChat: () => void;
   onTogglePin: (id: string) => void;
+  onDeleteChat: (id: string) => void;
+  onRenameChat: (id: string, newTitle: string) => void;
   onOpenSettings: () => void;
   isOpen: boolean;
 }
@@ -19,6 +21,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectChat,
   onNewChat,
   onTogglePin,
+  onDeleteChat,
+  onRenameChat,
   onOpenSettings,
   isOpen,
 }) => {
@@ -50,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             colorClass="text-blue-500 dark:text-blue-400 group-hover:animate-pulse-slow"
             size={20}
           />
-          <span className="font-semibold text-gray-800 dark:text-gray-100">New Chat</span>
+          <span className="font-medium tracking-tight text-gray-800 dark:text-gray-100">New Chat</span>
           <Plus size={18} className="ml-auto text-gray-400 group-hover:text-blue-500 transition-colors" />
         </button>
       </div>
@@ -71,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <>
             {pinnedChats.length > 0 && (
               <div className="mb-6">
-                <div className="px-5 py-2 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                <div className="px-5 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                   Pinned
                 </div>
                 <ul className="space-y-0.5" role="list">
@@ -82,6 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         activeChatId={activeChatId}
                         onSelectChat={onSelectChat}
                         onTogglePin={onTogglePin}
+                        onDeleteChat={onDeleteChat}
+                        onRenameChat={onRenameChat}
                       />
                     </li>
                   ))}
@@ -90,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
 
             <div>
-              <div className="px-5 py-2 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              <div className="px-5 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
                 Recent
               </div>
               <ul className="space-y-0.5" role="list">
@@ -101,6 +107,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       activeChatId={activeChatId}
                       onSelectChat={onSelectChat}
                       onTogglePin={onTogglePin}
+                      onDeleteChat={onDeleteChat}
+                      onRenameChat={onRenameChat}
                     />
                   </li>
                 ))}
@@ -117,7 +125,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="flex items-center gap-3 px-4 py-2.5 w-full rounded-xl hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-300 transition-colors"
         >
           <Settings size={18} className="text-gray-500" />
-          <span className="text-sm font-medium">Settings</span>
+          <span className="text-sm font-normal tracking-tight">Settings</span>
         </button>
       </div>
     </aside>

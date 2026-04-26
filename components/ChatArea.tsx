@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { ChatSession } from '../types';
 import { SUGGESTED_PROMPTS } from '../constants';
 import { groupMessagesByDate } from '../utils/timeUtils';
@@ -18,20 +18,48 @@ interface ChatAreaProps {
 export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) => {
   const { handleSendMessage } = useChatActions();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // True once the user intentionally scrolls up during an active stream
+  const userScrolledUpRef = useRef(false);
   const isNewChat = !chat || chat.messages.length === 0;
 
   // Derived — single source of truth for streaming state
   const isStreaming = chat?.messages.some(m => m.isStreaming) ?? false;
+
+  // Show the typing indicator while waiting for the server AND while the
+  // placeholder message exists but hasn't received its first token yet.
+  const streamingMsg = chat?.messages.find(m => m.isStreaming);
+  const showTypingIndicator = isTyping || (streamingMsg != null && streamingMsg.content === '');
 
   const messageGroups = useMemo(() => {
     if (!chat || chat.messages.length === 0) return [];
     return groupMessagesByDate(chat.messages);
   }, [chat?.messages]);
 
-  // Auto-scroll to bottom on every new message / token during streaming
+  // When streaming ends, re-enable auto-scroll for the next exchange
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!isStreaming) userScrolledUpRef.current = false;
+  }, [isStreaming]);
+
+  // Auto-scroll: only when the user hasn't scrolled up mid-stream
+  useEffect(() => {
+    if (!userScrolledUpRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [chat?.messages]);
+
+  // Detect intentional upward scroll during streaming
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el || !isStreaming) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distFromBottom > 80) {
+      userScrolledUpRef.current = true;
+    } else {
+      // Back near the bottom — resume auto-scroll
+      userScrolledUpRef.current = false;
+    }
+  }, [isStreaming]);
 
   return (
     // ChatArea Container: flex-1 fills remaining space after header
@@ -70,7 +98,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) 
       ) : (
         // ── Existing-chat view ──────────────────────────────────────────────
         <>
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
+          <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
             <div className="max-w-2xl mx-auto flex flex-col pb-4">
               {messageGroups.map((group) => (
                 <div key={group.date}>
@@ -90,8 +118,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) 
                 </div>
               ))}
 
-              {/* Typing indicator shows only before the first streaming token arrives */}
-              {isTyping && <TypingIndicator />}
+              {/* Typing indicator: visible until first token renders */}
+              {showTypingIndicator && <TypingIndicator />}
 
               {/* Scroll anchor — always kept at the bottom of the message list */}
               <div ref={messagesEndRef} />

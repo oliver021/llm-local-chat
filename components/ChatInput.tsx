@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatActions } from '../context/ChatContext';
-import { Send, Plus } from './Icons';
+import { Send, Plus, Square } from './Icons';
 
 const MAX_INPUT_LENGTH  = 4000;
 const INPUT_WARN_THRESHOLD = 3500;
@@ -14,7 +14,7 @@ interface ChatInputProps {
 }
 
 export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputRef, isStreaming = false }) => {
-  const { handleSendMessage } = useChatActions();
+  const { handleSendMessage, handleStopStreaming } = useChatActions();
   const [input, setInput] = useState('');
 
   // Use the forwarded ref if provided, otherwise create a local one
@@ -67,23 +67,33 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputR
           onKeyDown={handleKeyDown}
           placeholder="Message Aura…"
           rows={1}
-          disabled={isStreaming}
-          className="w-full max-h-[200px] py-3 px-2 bg-transparent border-none focus:ring-0 resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-base leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full max-h-[200px] py-3 px-2 bg-transparent border-none focus:ring-0 resize-none text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-base leading-relaxed"
         />
 
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={!input.trim() || isStreaming}
-          aria-label="Send message"
-          className={`flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0 transition-all duration-200 ${
-            input.trim() && !isStreaming
-              ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-md hover:shadow-lg hover:scale-105'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-          }`}
-        >
-          <Send size={20} className="transition-transform" />
-        </button>
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={handleStopStreaming}
+            aria-label="Stop generating"
+            className="flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0 bg-red-500 hover:bg-red-600 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all duration-200"
+          >
+            <Square size={16} className="fill-current" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!input.trim()}
+            aria-label="Send message"
+            className={`flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0 transition-all duration-200 ${
+              input.trim()
+                ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-md hover:shadow-lg hover:scale-105'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            <Send size={20} className="transition-transform" />
+          </button>
+        )}
       </div>
 
       {/* Shortcut hint line + character counter */}
