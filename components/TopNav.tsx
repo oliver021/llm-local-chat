@@ -4,6 +4,7 @@ import { Menu, Sun, Moon, Sparkles, Cpu } from './Icons';
 import { useChatActions } from '../context/ChatContext';
 import type { ProviderKey } from '../hooks/useProvider';
 import { PROVIDER_META } from '../hooks/useProvider';
+import { useBackendStatus } from '../hooks/useBackendStatus';
 
 const ArchiveIcon = ({ size = 15 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -36,6 +37,8 @@ interface TopNavProps {
   activeProvider?: ProviderKey;
   activeModel?: string;
   onOpenArchived: () => void;
+  onOpenBookmarks: () => void;
+  onOpenCopyChat: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -46,10 +49,13 @@ export const TopNav: React.FC<TopNavProps> = ({
   activeProvider,
   activeModel,
   onOpenArchived,
+  onOpenBookmarks,
+  onOpenCopyChat,
 }) => {
   const { openModelSelector } = useChatActions();
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const backendStatus = useBackendStatus();
 
   const providerLabel = activeProvider
     ? PROVIDER_META.find((p) => p.key === activeProvider)?.shortLabel
@@ -105,6 +111,22 @@ export const TopNav: React.FC<TopNavProps> = ({
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Backend status dot */}
+        {backendStatus === 'offline' && (
+          <div
+            className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0"
+            title="Backend unreachable — check if the API server is running on port 3001"
+            aria-label="Backend offline"
+          />
+        )}
+        {backendStatus === 'online' && (
+          <div
+            className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0"
+            title="Backend connected"
+            aria-label="Backend online"
+          />
+        )}
+
         {/* Model selector button */}
         <button
           onClick={openModelSelector}
@@ -158,6 +180,27 @@ export const TopNav: React.FC<TopNavProps> = ({
                 >
                   <UserIcon size={15} />
                   Profile
+                </button>
+
+                <button
+                  onClick={() => { setProfileOpen(false); onOpenCopyChat(); }}
+                  title="Duplicate current chat"
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                  Copy Chat
+                </button>
+
+                <button
+                  onClick={() => { setProfileOpen(false); onOpenBookmarks(); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                  </svg>
+                  Bookmarks
                 </button>
 
                 <button

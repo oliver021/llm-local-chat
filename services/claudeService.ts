@@ -17,7 +17,8 @@ export function streamClaudeResponse(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   onChunk: (chunk: string) => void,
   onDone: () => void,
-  onError: (err: Error) => void
+  onError: (err: Error) => void,
+  systemPrompt?: string
 ): () => void {
   let cancelled = false;
 
@@ -31,6 +32,7 @@ export function streamClaudeResponse(
         model,
         max_tokens: 2048,
         messages,
+        ...(systemPrompt ? { system: systemPrompt } : {}),
       });
 
       stream.on('text', (text) => {

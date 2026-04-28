@@ -1,8 +1,18 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import db from '../db.js';
 import type { ChatSession, Message } from '../../types.js';
 
 const router = Router();
+
+type Handler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
+function wrap(fn: Handler): Handler {
+  return (req, res, next) => {
+    try {
+      const r = fn(req, res, next);
+      if (r instanceof Promise) r.catch(next);
+    } catch (err) { next(err); }
+  };
+}
 
 // ── Row mappers ────────────────────────────────────────────────────────────────
 
@@ -64,25 +74,25 @@ function loadMessages(): Map<string, Message[]> {
 // ── Routes ─────────────────────────────────────────────────────────────────────
 
 // GET /api/chats — active (non-archived) sessions with messages
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', wrap((_req: Request, res: Response) => {
   const sessions = db
     .prepare('SELECT * FROM chat_sessions WHERE is_archived = 0 ORDER BY updated_at DESC')
     .all() as SessionRow[];
   const byChat = loadMessages();
   res.json(sessions.map(s => toSession(s, byChat.get(s.id) ?? [])));
-});
+}));
 
 // GET /api/chats/archived — archived sessions with messages
-router.get('/archived', (_req: Request, res: Response) => {
+router.get('/archived', wrap((_req: Request, res: Response) => {
   const sessions = db
     .prepare('SELECT * FROM chat_sessions WHERE is_archived = 1 ORDER BY updated_at DESC')
     .all() as SessionRow[];
   const byChat = loadMessages();
   res.json(sessions.map(s => toSession(s, byChat.get(s.id) ?? [])));
-});
+}));
 
 // POST /api/chats — create a new session
-router.post('/', (req: Request, res: Response) => {
+router.post('/', wrap((req: Request, res: Response) => {
   const { id, title, isPinned, isArchived, createdAt, updatedAt } = req.body as ChatSession;
   const now = Date.now();
   db.prepare(
@@ -90,10 +100,10 @@ router.post('/', (req: Request, res: Response) => {
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(id, title, isPinned ? 1 : 0, isArchived ? 1 : 0, createdAt ?? now, updatedAt);
   res.status(201).json({ id });
-});
+}));
 
 // PATCH /api/chats/:id — update any combination of session fields
-router.patch('/:id', (req: Request, res: Response) => {
+router.patch('/:id', wrap((req: Request, res: Response) => {
   const { title, isPinned, isArchived, updatedAt } = req.body as Partial<ChatSession>;
   const sets: string[] = [];
   const vals: unknown[] = [];
@@ -105,32 +115,32 @@ router.patch('/:id', (req: Request, res: Response) => {
   vals.push(req.params.id);
   db.prepare(`UPDATE chat_sessions SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
   res.json({ ok: true });
-});
+}));
 
 // DELETE /api/chats/:id — delete session (cascades to messages via FK)
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', wrap((req: Request, res: Response) => {
   db.prepare('DELETE FROM chat_sessions WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
-});
+}));
 
 // DELETE /api/chats — wipe all sessions
-router.delete('/', (_req: Request, res: Response) => {
+router.delete('/', wrap((_req: Request, res: Response) => {
   db.prepare('DELETE FROM chat_sessions').run();
   res.json({ ok: true });
-});
+}));
 
 // POST /api/chats/:id/messages — append a message
-router.post('/:id/messages', (req: Request, res: Response) => {
+router.post('/:id/messages', wrap((req: Request, res: Response) => {
   const { id, role, content, timestamp, isEdited, editedAt } = req.body as Message;
   db.prepare(
     `INSERT INTO messages (id, chat_id, role, content, timestamp, is_edited, edited_at)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   ).run(id, req.params.id, role, content, timestamp, isEdited ? 1 : 0, editedAt ?? null);
   res.status(201).json({ id });
-});
+}));
 
 // PATCH /api/chats/:id/messages/:mid — edit message content / mark edited
-router.patch('/:id/messages/:mid', (req: Request, res: Response) => {
+router.patch('/:id/messages/:mid', wrap((req: Request, res: Response) => {
   const { content, isEdited, editedAt } = req.body as Partial<Message>;
   const sets: string[] = [];
   const vals: unknown[] = [];
@@ -141,12 +151,12 @@ router.patch('/:id/messages/:mid', (req: Request, res: Response) => {
   vals.push(req.params.mid);
   db.prepare(`UPDATE messages SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
   res.json({ ok: true });
-});
+}));
 
 // DELETE /api/chats/:id/messages/:mid — delete a single message
-router.delete('/:id/messages/:mid', (req: Request, res: Response) => {
+router.delete('/:id/messages/:mid', wrap((req: Request, res: Response) => {
   db.prepare('DELETE FROM messages WHERE id = ?').run(req.params.mid);
   res.json({ ok: true });
-});
+}));
 
 export default router;

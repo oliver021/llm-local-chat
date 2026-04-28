@@ -1,3 +1,16 @@
+import type { AppError } from '../types';
+
+const INACTIVITY_TIMEOUT_MS = 30_000;
+
+function makeStreamError(message: string, code: AppError['code'], userMessage: string): AppError {
+  const err = new Error(message) as AppError;
+  err.code = code;
+  err.userFacing = true;
+  err.userMessage = userMessage;
+  err.retryable = true;
+  return err;
+}
+
 /**
  * Generic OpenAI-compatible SSE streaming client.
  *
@@ -18,9 +31,31 @@ export function streamOpenAICompatible(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   onChunk: (chunk: string) => void,
   onDone: () => void,
-  onError: (err: Error) => void
+  onError: (err: Error) => void,
+  systemPrompt?: string
 ): () => void {
   const controller = new AbortController();
+  let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearTimer() {
+    if (inactivityTimer) { clearTimeout(inactivityTimer); inactivityTimer = null; }
+  }
+
+  function resetTimer() {
+    clearTimer();
+    inactivityTimer = setTimeout(() => {
+      controller.abort();
+      onError(makeStreamError(
+        'Stream inactivity timeout',
+        'NETWORK_TIMEOUT',
+        'The model stopped responding for 30 seconds. Try sending again.'
+      ));
+    }, INACTIVITY_TIMEOUT_MS);
+  }
+
+  const allMessages = systemPrompt
+    ? [{ role: 'system' as const, content: systemPrompt }, ...messages]
+    : messages;
 
   (async () => {
     let response: Response;
@@ -28,19 +63,40 @@ export function streamOpenAICompatible(
       response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, messages, stream: true }),
+        body: JSON.stringify({ model, messages: allMessages, stream: true }),
         signal: controller.signal,
       });
     } catch (err) {
+      clearTimer();
       if ((err as Error).name === 'AbortError') return;
-      onError(err instanceof Error ? err : new Error(String(err)));
+      const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('econnrefused')) {
+        onError(makeStreamError(
+          'Network unreachable',
+          'NETWORK_UNREACHABLE',
+          'Could not reach the model server. Make sure it is running and accessible.'
+        ));
+      } else {
+        onError(err instanceof Error ? err : new Error(String(err)));
+      }
       return;
     }
 
     if (!response.ok) {
-      onError(new Error(`Server error: ${response.status} ${response.statusText}`));
+      clearTimer();
+      const code: AppError['code'] = response.status === 401 || response.status === 403
+        ? 'AUTH_INVALID'
+        : 'MODEL_ERROR';
+      onError(makeStreamError(
+        `Server error: ${response.status} ${response.statusText}`,
+        code,
+        `Model server returned an error (${response.status}). Check your model and provider settings.`
+      ));
       return;
     }
+
+    // Start inactivity timer once connection is established
+    resetTimer();
 
     const reader = response.body!
       .pipeThrough(new TextDecoderStream())
@@ -53,6 +109,7 @@ export function streamOpenAICompatible(
         const { value, done } = await reader.read();
         if (done) break;
 
+        resetTimer();
         buffer += value;
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
@@ -63,6 +120,7 @@ export function streamOpenAICompatible(
 
           const data = trimmed.slice('data:'.length).trim();
           if (data === '[DONE]') {
+            clearTimer();
             onDone();
             return;
           }
@@ -77,14 +135,16 @@ export function streamOpenAICompatible(
         }
       }
     } catch (err) {
+      clearTimer();
       if ((err as Error).name === 'AbortError') return;
       onError(err instanceof Error ? err : new Error(String(err)));
       return;
     }
 
     // Stream ended without [DONE] (some servers omit it)
+    clearTimer();
     onDone();
   })();
 
-  return () => controller.abort();
+  return () => { clearTimer(); controller.abort(); };
 }

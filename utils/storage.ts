@@ -1,11 +1,18 @@
-import { ChatSession, Theme } from '../types';
+import { ChatSession, Theme, ThemeName, Assistant, ActiveAssistantId, PersonalizationSettings, WebSearchSettings, MCPServer, VoiceSettings } from '../types';
 import type { ProviderKey } from '../hooks/useProvider';
 
 const STORAGE_KEYS = {
-  THEME:    'AURA_THEME',
-  UI_STATE: 'AURA_UI_STATE',
-  PROVIDER: 'LLM_ACTIVE_PROVIDER',
-  MODEL:    'LLM_ACTIVE_MODEL',
+  THEME:            'AURA_THEME',
+  THEME_NAME:       'AURA_THEME_NAME',
+  UI_STATE:         'AURA_UI_STATE',
+  PROVIDER:         'LLM_ACTIVE_PROVIDER',
+  MODEL:            'LLM_ACTIVE_MODEL',
+  ASSISTANTS:       'AURA_ASSISTANTS',
+  ACTIVE_ASSISTANT: 'AURA_ACTIVE_ASSISTANT',
+  PERSONALIZATION:  'AURA_PERSONALIZATION',
+  WEB_SEARCH:       'AURA_WEB_SEARCH',
+  MCP_SERVERS:      'AURA_MCP_SERVERS',
+  VOICE_SETTINGS:   'AURA_VOICE_SETTINGS',
   // Legacy key — read once during migration then cleared
   LEGACY_CHATS: 'AURA_CHATS',
 } as const;
@@ -59,6 +66,17 @@ export function setStoredTheme(theme: Theme): void {
   storageSet(STORAGE_KEYS.THEME, theme);
 }
 
+const VALID_THEME_NAMES: ThemeName[] = ['default', 'ocean', 'sunset', 'forest', 'violet', 'rose', 'midnight', 'gold'];
+
+export function getStoredThemeName(fallback: ThemeName): ThemeName {
+  const stored = storageGet<string>(STORAGE_KEYS.THEME_NAME, '');
+  return (VALID_THEME_NAMES as string[]).includes(stored) ? (stored as ThemeName) : fallback;
+}
+
+export function setStoredThemeName(name: ThemeName): void {
+  storageSet(STORAGE_KEYS.THEME_NAME, name);
+}
+
 export function getStoredUIState(fallback: UIState): UIState {
   const stored = storageGet<Partial<UIState>>(STORAGE_KEYS.UI_STATE, {});
   return {
@@ -109,12 +127,105 @@ export function drainLegacyChats(): ChatSession[] | null {
   }
 }
 
+// ── Assistants ─────────────────────────────────────────────────────────────────
+
+export function getStoredAssistants(): Assistant[] {
+  return storageGet<Assistant[]>(STORAGE_KEYS.ASSISTANTS, []);
+}
+
+export function setStoredAssistants(list: Assistant[]): void {
+  storageSet(STORAGE_KEYS.ASSISTANTS, list);
+}
+
+export function getStoredActiveAssistantId(): ActiveAssistantId {
+  return storageGet<ActiveAssistantId>(STORAGE_KEYS.ACTIVE_ASSISTANT, null);
+}
+
+export function setStoredActiveAssistantId(id: ActiveAssistantId): void {
+  storageSet(STORAGE_KEYS.ACTIVE_ASSISTANT, id);
+}
+
+// ── Personalization ────────────────────────────────────────────────────────────
+
+const DEFAULT_PERSONALIZATION: PersonalizationSettings = {
+  displayName: '',
+  customInstructions: '',
+  memoriesEnabled: false,
+  memories: [],
+};
+
+export function getStoredPersonalization(): PersonalizationSettings {
+  const stored = storageGet<Partial<PersonalizationSettings>>(STORAGE_KEYS.PERSONALIZATION, {});
+  return { ...DEFAULT_PERSONALIZATION, ...stored };
+}
+
+export function setStoredPersonalization(s: PersonalizationSettings): void {
+  storageSet(STORAGE_KEYS.PERSONALIZATION, s);
+}
+
+// ── Web Search ─────────────────────────────────────────────────────────────────
+
+const DEFAULT_WEB_SEARCH: WebSearchSettings = {
+  enabled: false,
+  provider: 'tavily',
+  apiKey: '',
+};
+
+export function getStoredWebSearch(): WebSearchSettings {
+  const stored = storageGet<Partial<WebSearchSettings>>(STORAGE_KEYS.WEB_SEARCH, {});
+  return { ...DEFAULT_WEB_SEARCH, ...stored };
+}
+
+export function setStoredWebSearch(s: WebSearchSettings): void {
+  storageSet(STORAGE_KEYS.WEB_SEARCH, s);
+}
+
+// ── MCP Servers ────────────────────────────────────────────────────────────────
+
+export function getStoredMCPServers(): MCPServer[] {
+  return storageGet<MCPServer[]>(STORAGE_KEYS.MCP_SERVERS, []);
+}
+
+export function setStoredMCPServers(list: MCPServer[]): void {
+  storageSet(STORAGE_KEYS.MCP_SERVERS, list);
+}
+
+// ── Voice Settings ─────────────────────────────────────────────────────────────
+
+const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
+  ttsEnabled: false,
+  sttEnabled: false,
+  ttsProvider: 'browser',
+  sttProvider: 'browser',
+  apiKey: '',
+  selectedVoice: 'default',
+  speed: 1.0,
+  pitch: 1.0,
+};
+
+export function getStoredVoiceSettings(): VoiceSettings {
+  const stored = storageGet<Partial<VoiceSettings>>(STORAGE_KEYS.VOICE_SETTINGS, {});
+  return { ...DEFAULT_VOICE_SETTINGS, ...stored };
+}
+
+export function setStoredVoiceSettings(s: VoiceSettings): void {
+  storageSet(STORAGE_KEYS.VOICE_SETTINGS, s);
+}
+
+// ── Clear all ──────────────────────────────────────────────────────────────────
+
 export function clearAllStorage(): void {
   try {
     localStorage.removeItem(STORAGE_KEYS.THEME);
     localStorage.removeItem(STORAGE_KEYS.UI_STATE);
     localStorage.removeItem(STORAGE_KEYS.PROVIDER);
     localStorage.removeItem(STORAGE_KEYS.MODEL);
+    localStorage.removeItem(STORAGE_KEYS.ASSISTANTS);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_ASSISTANT);
+    localStorage.removeItem(STORAGE_KEYS.PERSONALIZATION);
+    localStorage.removeItem(STORAGE_KEYS.WEB_SEARCH);
+    localStorage.removeItem(STORAGE_KEYS.MCP_SERVERS);
+    localStorage.removeItem(STORAGE_KEYS.VOICE_SETTINGS);
     localStorage.removeItem(STORAGE_KEYS.LEGACY_CHATS);
   } catch (error) {
     console.warn('Failed to clear localStorage:', error);

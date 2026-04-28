@@ -77,9 +77,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, chatId })
         <div className="flex flex-col gap-1">
           {/* Content box */}
           <div className={`${
-            isAI
-              ? 'bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/80 border border-gray-200/60 dark:border-gray-700/50'
-              : 'bg-gradient-to-br from-blue-500 to-blue-600 dark:from-blue-500 dark:to-blue-700'
+            message.isError
+              ? 'bg-red-50 dark:bg-red-950/30 border border-red-200/60 dark:border-red-800/50'
+              : isAI
+                ? 'bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/80 border border-gray-200/60 dark:border-gray-700/50'
+                : 'bg-gradient-to-br from-blue-500 to-blue-600 dark:from-blue-500 dark:to-blue-700'
           } rounded-2xl px-4 py-2.5 max-w-xl shadow-sm`}>
 
             {/* Header: name · timestamp · edited badge */}
@@ -126,11 +128,48 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, chatId })
             {message.isStreaming && (
               <span className="inline-block w-0.5 h-4 bg-blue-400 ml-0.5 align-middle animate-pulse" aria-label="AI is typing" />
             )}
+
+            {/* Retry button for failed responses */}
+            {message.isError && !message.isStreaming && (
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleRegenerateMessage(chatId, message.id)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800/60 transition-colors"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                  </svg>
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Action menu */}
+          {/* Action menu + bookmark button */}
           {!message.isStreaming && !isEditing && (
-            <div className={`flex ${isAI ? 'justify-start' : 'justify-end'} px-2 opacity-0 group-hover:opacity-100 transition-opacity`}>
+            <div className={`flex items-center gap-1 ${isAI ? 'justify-start' : 'justify-end'} px-2 opacity-0 group-hover:opacity-100 transition-opacity`}>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('bookmark-message', { detail: { messageId: message.id, chatId } }))}
+                className="p-1.5 rounded-md text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                title="Bookmark"
+                aria-label="Bookmark message"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('rebranch-message', { detail: { messageId: message.id, chatId } }))}
+                className="p-1.5 rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                title="Branch from here"
+                aria-label="Branch conversation from this message"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="6" y1="3" x2="6" y2="15" /><circle cx="18" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M18 9a9 9 0 0 1-9 9" />
+                </svg>
+              </button>
               <MessageActionMenu
                 messageId={message.id}
                 chatId={chatId}

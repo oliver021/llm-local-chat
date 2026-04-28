@@ -12,6 +12,7 @@ interface SidebarProps {
   onTogglePin: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onArchiveChat: (id: string) => void;
+  onCopyChat: (id: string) => void;
   onRenameChat: (id: string, newTitle: string) => void;
   onOpenSettings: () => void;
   onOpenArchived: () => void;
@@ -26,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTogglePin,
   onDeleteChat,
   onArchiveChat,
+  onCopyChat,
   onRenameChat,
   onOpenSettings,
   isOpen,
@@ -86,6 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onTogglePin={onTogglePin}
                         onDeleteChat={onDeleteChat}
                         onArchiveChat={onArchiveChat}
+                        onCopyChat={onCopyChat}
                         onRenameChat={onRenameChat}
                       />
                     </li>

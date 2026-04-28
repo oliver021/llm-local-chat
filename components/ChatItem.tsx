@@ -18,6 +18,7 @@ interface ChatItemProps {
   onTogglePin: (id: string) => void;
   onDeleteChat: (id: string) => void;
   onArchiveChat: (id: string) => void;
+  onCopyChat: (id: string) => void;
   onRenameChat: (id: string, newTitle: string) => void;
 }
 
@@ -28,6 +29,7 @@ export const ChatItem: React.FC<ChatItemProps> = ({
   onTogglePin,
   onDeleteChat,
   onArchiveChat,
+  onCopyChat,
   onRenameChat,
 }) => {
   const isActive = chat.id === activeChatId;
@@ -178,10 +180,10 @@ export const ChatItem: React.FC<ChatItemProps> = ({
               Rename
             </button>
 
-            {/* Copy — not implemented */}
+            {/* Copy */}
             <button
-              disabled
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-light tracking-tight text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-50"
+              onClick={() => { setMenuOpen(false); onCopyChat(chat.id); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-light tracking-tight text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
             >
               <Copy size={13} />
               Copy

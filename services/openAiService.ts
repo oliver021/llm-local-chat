@@ -18,9 +18,14 @@ export function streamOpenAiResponse(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   onChunk: (chunk: string) => void,
   onDone: () => void,
-  onError: (err: Error) => void
+  onError: (err: Error) => void,
+  systemPrompt?: string
 ): () => void {
   let cancelled = false;
+
+  const allMessages = systemPrompt
+    ? [{ role: 'system' as const, content: systemPrompt }, ...messages]
+    : messages;
 
   (async () => {
     try {
@@ -31,7 +36,7 @@ export function streamOpenAiResponse(
       const stream = await getClient().chat.completions.create({
         model,
         stream: true,
-        messages,
+        messages: allMessages,
       });
 
       for await (const chunk of stream) {

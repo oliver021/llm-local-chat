@@ -34,6 +34,8 @@ import {
   ChevronDown,
   Star,
   Square,
+  Mic,
+  Globe,
 } from 'lucide-react';
 
 interface ColorfulIconProps {
@@ -83,4 +85,6 @@ export {
   ChevronDown,
   Star,
   Square,
+  Mic,
+  Globe,
 };

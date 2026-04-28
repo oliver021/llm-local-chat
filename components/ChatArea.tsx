@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { ChatSession } from '../types';
 import { SUGGESTED_PROMPTS } from '../constants';
 import { groupMessagesByDate } from '../utils/timeUtils';
 import { useChatActions } from '../context/ChatContext';
+import { useSettingsContext } from '../context/SettingsContext';
 import { ChatInput } from './ChatInput';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
 import { Sparkles, ColorfulIcon } from './Icons';
+import { AssistantPickerModal } from './AssistantPickerModal';
 
 interface ChatAreaProps {
   chat: ChatSession | null;
@@ -17,6 +19,8 @@ interface ChatAreaProps {
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) => {
   const { handleSendMessage } = useChatActions();
+  const { activeAssistant } = useSettingsContext();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   // True once the user intentionally scrolls up during an active stream
@@ -75,8 +79,20 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) 
             How can I help you today?
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-center mb-12 max-w-md">
-            I'm Aura, your creative and helpful AI assistant. Ask me anything.
+            I'm{' '}
+            <button
+              onClick={() => setPickerOpen(true)}
+              className="font-semibold text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 underline underline-offset-2 decoration-dotted transition-colors"
+              title="Change assistant"
+            >
+              {activeAssistant
+                ? `${activeAssistant.avatarEmoji} ${activeAssistant.name}`
+                : 'Default Assistant'}
+            </button>
+            . Ask me anything.
           </p>
+
+          {pickerOpen && <AssistantPickerModal onClose={() => setPickerOpen(false)} />}
 
           <div className="w-full max-w-3xl">
             <ChatInput isCentered inputRef={inputRef} isStreaming={false} />

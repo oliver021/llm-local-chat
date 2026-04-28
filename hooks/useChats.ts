@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { ChatSession, Message } from '../types';
+import { AppError, ChatSession, Message } from '../types';
 import { getStreamFn } from '../services/providerDispatch';
 import type { ProviderKey } from './useProvider';
 import { drainLegacyChats, clearAllStorage } from '../utils/storage';
@@ -15,6 +15,7 @@ import {
   dbUpdateMessage,
   dbDeleteMessage,
   dbArchiveChat,
+  dbCopyChat,
 } from '../utils/chatApi';
 
 interface UseChatsResult {
@@ -29,6 +30,7 @@ interface UseChatsResult {
   handleDeleteChat: (id: string) => void;
   handleArchiveChat: (id: string) => void;
   handleRenameChat: (id: string, newTitle: string) => void;
+  handleCopyChat: (id: string) => void;
   handleStopStreaming: () => void;
   handleSendMessage: (content: string) => void;
   handleCopyMessage: (messageId: string) => void;
@@ -38,15 +40,29 @@ interface UseChatsResult {
   handleClearHistory: () => void;
 }
 
-// Swallow DB errors so UI keeps working if the API server is momentarily down.
-function db<T>(p: Promise<T>): void {
-  p.catch(err => console.error('[db]', err));
+// Debounce ref lives outside the hook so it persists across re-renders without
+// causing re-renders itself (plain object, not state).
+const _dbLastToasted = { current: 0 };
+
+function db<T>(p: Promise<T>, context?: string): void {
+  p.catch((err: unknown) => {
+    console.error('[db]', context ?? '', err);
+    const now = Date.now();
+    if (now - _dbLastToasted.current < 5000) return;
+    _dbLastToasted.current = now;
+    const code = (err as AppError)?.code;
+    const msg = code === 'NETWORK_UNREACHABLE'
+      ? 'Backend unreachable — changes may not be saved.'
+      : `Could not save${context ? ` (${context})` : ''} — working in memory.`;
+    toast.error(msg, { duration: 5000 });
+  });
 }
 
 export function useChats(
   onMobileNavigate?: () => void,
   activeProvider: ProviderKey = 'llm-llamacpp',
-  activeModel = 'model.gguf'
+  activeModel = 'model.gguf',
+  systemPrompt?: string
 ): UseChatsResult {
   const [chats, setChats] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -121,7 +137,7 @@ export function useChats(
     };
     setChats(prev => [newChat, ...prev]);
     setActiveChatId(newChat.id);
-    db(dbCreateChat(newChat));
+    db(dbCreateChat(newChat), 'create chat');
     if (window.innerWidth < 768) onMobileNavigate?.();
   }, [cancelActiveStream, onMobileNavigate]);
 
@@ -139,7 +155,7 @@ export function useChats(
       prev.map(chat => {
         if (chat.id !== id) return chat;
         const updated = { ...chat, isPinned: !chat.isPinned };
-        db(dbUpdateChat(id, { isPinned: updated.isPinned }));
+        db(dbUpdateChat(id, { isPinned: updated.isPinned }), 'pin chat');
         return updated;
       })
     );
@@ -148,16 +164,32 @@ export function useChats(
   const handleDeleteChat = useCallback((id: string) => {
     setChats(prev => prev.filter(chat => chat.id !== id));
     setActiveChatId(prev => (prev === id ? null : prev));
-    db(dbDeleteChat(id));
+    db(dbDeleteChat(id), 'delete chat');
     toast.success('Conversation deleted');
   }, []);
 
   const handleArchiveChat = useCallback((id: string) => {
     setChats(prev => prev.filter(chat => chat.id !== id));
     setActiveChatId(prev => (prev === id ? null : prev));
-    db(dbArchiveChat(id));
+    db(dbArchiveChat(id), 'archive chat');
     toast.success('Conversation archived');
   }, []);
+
+  const handleCopyChat = useCallback((id: string) => {
+    const chat = chats.find(c => c.id === id);
+    if (!chat) return;
+    const newId = `chat-${Date.now()}`;
+    const newChat: ChatSession = {
+      id: newId,
+      title: `${chat.title} (Copy)`,
+      isPinned: false,
+      updatedAt: Date.now(),
+      messages: chat.messages.map(m => ({ ...m })),
+    };
+    setChats(prev => [newChat, ...prev]);
+    setActiveChatId(newId);
+    db(dbCopyChat(id, newId, newChat.title, chat.messages), 'copy chat');
+  }, [chats]);
 
   const handleRenameChat = useCallback((id: string, newTitle: string) => {
     const trimmed = newTitle.trim();
@@ -165,7 +197,7 @@ export function useChats(
     setChats(prev =>
       prev.map(chat => (chat.id === id ? { ...chat, title: trimmed } : chat))
     );
-    db(dbUpdateChat(id, { title: trimmed }));
+    db(dbUpdateChat(id, { title: trimmed }), 'rename chat');
   }, []);
 
   const handleStopStreaming = useCallback(() => {
@@ -179,7 +211,7 @@ export function useChats(
       const chat = chatsRef.current.find(c => c.id === ctx.chatId);
       const msg = chat?.messages.find(m => m.id === ctx.messageId);
       if (msg) {
-        db(dbAddMessage(ctx.chatId, { ...msg, isStreaming: undefined }));
+        db(dbAddMessage(ctx.chatId, { ...msg, isStreaming: undefined }), 'save partial message');
       }
       streamingCtxRef.current = null;
     }
@@ -238,7 +270,7 @@ export function useChats(
           };
         })
       );
-      db(dbAddMessage(currentChatId, userMessage));
+      db(dbAddMessage(currentChatId, userMessage), 'save user message');
 
       // ── Streaming response ────────────────────────────────────────────────
 
@@ -315,14 +347,15 @@ export function useChats(
             role: 'ai',
             content: finalContent,
             timestamp: placeholder.timestamp,
-          }));
-          db(dbUpdateChat(currentChatId, { updatedAt: now }));
+          }), 'save ai message');
+          db(dbUpdateChat(currentChatId, { updatedAt: now }), 'update chat timestamp');
           streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
           setIsTyping(false);
-          const errContent = '(Error — could not reach model)';
+          const appErr = err as AppError;
+          const errContent = appErr.userMessage ?? 'Could not reach the model. Try again.';
           setChats(prev =>
             prev.map(chat => {
               if (chat.id !== currentChatId) return chat;
@@ -330,7 +363,7 @@ export function useChats(
                 ...chat,
                 messages: chat.messages.map(msg =>
                   msg.id === aiMessageId
-                    ? { ...msg, content: errContent, isStreaming: false }
+                    ? { ...msg, content: errContent, isStreaming: false, isError: true, errorCode: appErr.code ?? 'UNKNOWN' }
                     : msg
                 ),
               };
@@ -341,11 +374,12 @@ export function useChats(
             role: 'ai',
             content: errContent,
             timestamp: placeholder.timestamp,
-          }));
-          toast.error(err.message);
+          }), 'save error message');
+          toast.error(appErr.userMessage ?? err.message);
           streamingCtxRef.current = null;
           cancelStreamRef.current = null;
-        }
+        },
+        systemPrompt
       );
 
       cancelStreamRef.current = cancel;
@@ -376,7 +410,7 @@ export function useChats(
           : chat
       )
     );
-    db(dbDeleteMessage(chatId, messageId));
+    db(dbDeleteMessage(chatId, messageId), 'delete message');
     toast('Message deleted', { icon: '🗑️' });
   }, []);
 
@@ -398,7 +432,7 @@ export function useChats(
             : chat
         )
       );
-      db(dbUpdateMessage(chatId, messageId, { content: newContent, isEdited: true, editedAt: now }));
+      db(dbUpdateMessage(chatId, messageId, { content: newContent, isEdited: true, editedAt: now }), 'edit message');
       toast.success('Message updated');
     },
     []
@@ -415,7 +449,7 @@ export function useChats(
             : chat
         )
       );
-      db(dbDeleteMessage(chatId, messageId));
+      db(dbDeleteMessage(chatId, messageId), 'delete old message');
 
       const toastId = toast.loading('Regenerating response…');
       const newAiId = `msg-ai-${Date.now()}`;
@@ -483,14 +517,15 @@ export function useChats(
             role: 'ai',
             content: finalContent,
             timestamp: placeholder.timestamp,
-          }));
-          db(dbUpdateChat(chatId, { updatedAt: now }));
+          }), 'save regenerated message');
+          db(dbUpdateChat(chatId, { updatedAt: now }), 'update chat timestamp');
           toast.success('Response regenerated', { id: toastId });
           streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
-          const errContent = '(Error — could not reach model)';
+          const appErr = err as AppError;
+          const errContent = appErr.userMessage ?? 'Could not reach the model. Try again.';
           setChats(prev =>
             prev.map(chat => {
               if (chat.id !== chatId) return chat;
@@ -498,7 +533,7 @@ export function useChats(
                 ...chat,
                 messages: chat.messages.map(msg =>
                   msg.id === newAiId
-                    ? { ...msg, content: errContent, isStreaming: false }
+                    ? { ...msg, content: errContent, isStreaming: false, isError: true, errorCode: appErr.code ?? 'UNKNOWN' }
                     : msg
                 ),
               };
@@ -509,11 +544,12 @@ export function useChats(
             role: 'ai',
             content: errContent,
             timestamp: placeholder.timestamp,
-          }));
-          toast.error(err.message, { id: toastId });
+          }), 'save error message');
+          toast.error(appErr.userMessage ?? err.message, { id: toastId });
           streamingCtxRef.current = null;
           cancelStreamRef.current = null;
-        }
+        },
+        systemPrompt
       );
 
       cancelStreamRef.current = cancel;
@@ -525,7 +561,7 @@ export function useChats(
     cancelActiveStream();
     setChats([]);
     setActiveChatId(null);
-    db(dbDeleteAllChats());
+    db(dbDeleteAllChats(), 'clear all chats');
     clearAllStorage();
     toast.success('Chat history cleared');
   }, [cancelActiveStream]);
@@ -543,6 +579,7 @@ export function useChats(
     handleTogglePin,
     handleDeleteChat,
     handleArchiveChat,
+    handleCopyChat,
     handleRenameChat,
     handleStopStreaming,
     handleSendMessage,
