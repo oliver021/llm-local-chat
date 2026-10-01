@@ -1,4 +1,5 @@
 import type http from 'node:http';
+import { createConnection } from 'node:net';
 import express from 'express';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createProxy, type ProxyOptions } from '../../server/proxy.js';
@@ -159,16 +160,13 @@ describe('proxy: allow-list', () => {
     // fetch() would normalise these, so send the raw request line.
     const raw = (path: string) =>
       new Promise<string>((resolve, reject) => {
-        import('node:net').then(({ createConnection }) => {
-          const port = Number(new URL(proxy.url).port);
-          const socket = createConnection(port, '127.0.0.1', () => {
-            socket.write(`GET ${path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
-          });
-          let data = '';
-          socket.on('data', (c) => (data += c));
-          socket.on('end', () => resolve(data.split('\r\n')[0]));
-          socket.on('error', reject);
+        const socket = createConnection(Number(new URL(proxy.url).port), '127.0.0.1', () => {
+          socket.write(`GET ${path} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`);
         });
+        let data = '';
+        socket.on('data', (chunk) => (data += chunk));
+        socket.on('end', () => resolve(data.split('\r\n')[0]));
+        socket.on('error', reject);
       });
 
     for (const path of [
