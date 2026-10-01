@@ -79,6 +79,26 @@ describe('serving the built frontend', () => {
   });
 });
 
+describe('install location', () => {
+  it('serves the UI even when the path to it contains a dot-directory', async () => {
+    // Express refuses to sendFile() absolute paths with a hidden segment, e.g. ~/.projects/app/dist
+    const dist = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dots-')), '.hidden', 'dist');
+    fs.mkdirSync(dist, { recursive: true });
+    fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><div id="root"></div>');
+
+    const app = await startApp({ DIST_DIR: dist });
+    try {
+      for (const route of ['/', '/some/route']) {
+        const res = await fetch(`${app.url}${route}`);
+        expect(res.status, route).toBe(200);
+        expect(await res.text()).toContain('<div id="root">');
+      }
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 describe('without a built frontend', () => {
   it('explains what to do instead of a blank 404', async () => {
     const res = await fetch(`${withoutUi.url}/`);

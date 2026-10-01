@@ -169,7 +169,8 @@ export function createApp({ config, db }: AppDeps): Express {
 
     if (wantsPage && hasFrontend) {
       res.setHeader('Cache-Control', 'no-cache');
-      res.sendFile(indexHtml);
+      // Relative to `root`: an absolute path with a hidden segment (~/.apps/chat/dist) would 404.
+      res.sendFile('index.html', { root: config.distDir });
       return;
     }
     if (wantsPage) {
