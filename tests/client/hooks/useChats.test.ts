@@ -268,3 +268,22 @@ describe('chat management', () => {
     expect(api.dbDeleteMessage).toHaveBeenCalledWith('chat-seed', 'a2');
   });
 });
+
+describe('leaving the page mid-reply', () => {
+  it('cancels the stream when the page is hidden, without recording an error', async () => {
+    const model = fakeModel();
+    const { result } = await loadHook(undefined, []);
+    act(() => result.current.handleSendMessage('write a long story'));
+    act(() => model.calls[0].onChunk('Once upon'));
+
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+
+    expect(model.cancel).toHaveBeenCalledTimes(1);
+    expect(api.dbAddMessage).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ role: 'ai' })
+    );
+  });
+});

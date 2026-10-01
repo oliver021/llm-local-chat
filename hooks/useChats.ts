@@ -116,6 +116,18 @@ export function useChats(
     return () => { cancelStreamRef.current?.(); };
   }, []);
 
+  // Reloading or closing the tab mid-reply aborts the request. Cancel it ourselves
+  // first so the abort is silent instead of being stored as a "could not reach
+  // the model" reply.
+  useEffect(() => {
+    const onPageHide = () => {
+      cancelStreamRef.current?.();
+      cancelStreamRef.current = null;
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
+
   // ── Private helper ─────────────────────────────────────────────────────────
 
   const cancelActiveStream = useCallback(() => {
