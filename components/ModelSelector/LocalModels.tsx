@@ -32,7 +32,7 @@ export function LocalModels({ activeProvider, activeModel, onSelect }: {
         <p className="text-sm text-gray-500 dark:text-gray-400">No models loaded in llama-server.</p>
         <p className="text-xs text-gray-400 dark:text-gray-500">
           Start llama-server with a model, or run{' '}
-          <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-mono text-xs">docker compose up</code>
+          <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-mono text-xs">docker compose --profile llama up</code>
         </p>
         <button onClick={load} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
           <RefreshCw size={11} /> Retry

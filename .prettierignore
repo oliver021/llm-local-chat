@@ -1,0 +1,9 @@
+dist
+dist-server
+coverage
+data
+models
+test-results
+playwright-report
+package-lock.json
+docs/screenshots

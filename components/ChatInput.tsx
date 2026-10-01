@@ -54,7 +54,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputR
       <div className="relative flex items-center gap-2 bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-700 rounded-3xl p-2 shadow-sm focus-within:shadow-md focus-within:border-blue-300 dark:focus-within:border-blue-500/50 transition-all">
         <button
           type="button"
-          className="p-3 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+          disabled
+          title="File attachments are not supported yet"
+          className="p-3 text-gray-300 dark:text-gray-600 cursor-not-allowed rounded-full flex-shrink-0"
           aria-label="Attach file"
         >
           <Plus size={20} />
