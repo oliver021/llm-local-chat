@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Loader2, ExternalLink } from '../../Icons';
 import { fetchHFModelDetail } from '../../../services/modelDiscovery';
-import { extractQuantLabel, MetaItem } from './utils';
+import { extractQuantLabel } from './utils';
+import { MetaItem } from './MetaItem';
 import type { ModelInfo, HFModelDetail } from '../../../services/modelDiscovery';
 
 export function ModelDetailPanel({ repoId, allVariants, selectedVariantIdx, onSelectVariant }: {

@@ -1,13 +1,9 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { Suspense, lazy, useCallback, useRef, useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { ChatArea } from './components/ChatArea';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { SettingsModal } from './components/Settings';
-import { ModelSelectorModal } from './components/ModelSelectorModal';
-import { ArchivedChatsPage } from './components/ArchivedChatsPage';
-import { BookmarksPage } from './components/BookmarksPage';
 import { ChatActionsProvider } from './context/ChatContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { useTheme } from './hooks/useTheme';
@@ -16,9 +12,19 @@ import { useChats } from './hooks/useChats';
 import { useProvider } from './hooks/useProvider';
 import { useSettings } from './hooks/useSettings';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { dbCopyChat } from './utils/chatApi';
 import { dbCreateBookmark } from './utils/bookmarkApi';
 import { toast } from 'sonner';
+
+// Dialogs are not needed for the first paint, so they load in the background.
+const SettingsModal = lazy(() => import('./components/Settings').then(m => ({ default: m.SettingsModal })));
+const ModelSelectorModal = lazy(() => import('./components/ModelSelectorModal').then(m => ({ default: m.ModelSelectorModal })));
+const ArchivedChatsPage = lazy(() => import('./components/ArchivedChatsPage').then(m => ({ default: m.ArchivedChatsPage })));
+const BookmarksPage = lazy(() => import('./components/BookmarksPage').then(m => ({ default: m.BookmarksPage })));
+
+interface MessageEventDetail {
+  messageId: string;
+  chatId: string;
+}
 
 const App: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -55,15 +61,26 @@ const App: React.FC = () => {
 
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
-  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
-  const [copyTitle, setCopyTitle] = useState('');
+  // Chat being copied via the "Copy chat" dialog (null = dialog closed)
+  const [copyDialog, setCopyDialog] = useState<{ sourceId: string; title: string } | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Listen for bookmark and rebranch events from MessageBubble
+  const openCopyDialog = useCallback((id: string) => {
+    const chat = chats.find(c => c.id === id);
+    if (chat) setCopyDialog({ sourceId: id, title: `${chat.title} (Copy)` });
+  }, [chats]);
+
+  const confirmCopy = useCallback(() => {
+    if (!copyDialog) return;
+    handleCopyChat(copyDialog.sourceId, { title: copyDialog.title });
+    setCopyDialog(null);
+  }, [copyDialog, handleCopyChat]);
+
+  // Listen for bookmark and branch events from MessageBubble
   useEffect(() => {
-    const handleBookmark = (e: any) => {
-      const { messageId, chatId } = e.detail;
+    const handleBookmark = (e: Event) => {
+      const { messageId, chatId } = (e as CustomEvent<MessageEventDetail>).detail;
       const msg = chats.find(c => c.id === chatId)?.messages.find(m => m.id === messageId);
       if (msg) {
         const bookmarkId = `bm-${Date.now()}`;
@@ -77,19 +94,12 @@ const App: React.FC = () => {
       }
     };
 
-    const handleRebranch = (e: any) => {
-      const { messageId, chatId } = e.detail;
+    // "Branch from here": new chat holding the conversation up to that message
+    const handleRebranch = (e: Event) => {
+      const { messageId, chatId } = (e as CustomEvent<MessageEventDetail>).detail;
       const chat = chats.find(c => c.id === chatId);
-      if (chat) {
-        const msgIdx = chat.messages.findIndex(m => m.id === messageId);
-        if (msgIdx >= 0) {
-          const fromMessages = chat.messages.slice(msgIdx);
-          const newId = `chat-${Date.now()}`;
-          setCopyTitle(`${chat.title} (Branched)`);
-          handleCopyChat(chatId);
-          // The rebranch is handled via the copy dialog - user confirms
-        }
-      }
+      if (!chat) return;
+      handleCopyChat(chatId, { title: `${chat.title} (Branch)`, upToMessageId: messageId });
     };
 
     window.addEventListener('bookmark-message', handleBookmark);
@@ -105,7 +115,8 @@ const App: React.FC = () => {
   }, []);
 
   const handleToggleSidebar = useCallback(() => {
-    sidebarOpen ? closeSidebar() : openSidebar();
+    if (sidebarOpen) closeSidebar();
+    else openSidebar();
   }, [sidebarOpen, closeSidebar, openSidebar]);
 
   useKeyboardShortcuts({
@@ -124,6 +135,7 @@ const App: React.FC = () => {
         handleTogglePin,
         handleDeleteChat,
         handleArchiveChat,
+        handleCopyChat,
         handleRenameChat,
         handleStopStreaming,
         openSettings,
@@ -157,13 +169,7 @@ const App: React.FC = () => {
             onTogglePin={handleTogglePin}
             onDeleteChat={handleDeleteChat}
             onArchiveChat={handleArchiveChat}
-            onCopyChat={(id) => {
-              const chat = chats.find(c => c.id === id);
-              if (chat) {
-                setCopyTitle(`${chat.title} (Copy)`);
-                setCopyDialogOpen(true);
-              }
-            }}
+            onCopyChat={openCopyDialog}
             onRenameChat={handleRenameChat}
             onOpenSettings={openSettings}
             onOpenArchived={() => setArchivedOpen(true)}
@@ -187,12 +193,8 @@ const App: React.FC = () => {
               onOpenArchived={() => setArchivedOpen(true)}
               onOpenBookmarks={() => setBookmarksOpen(true)}
               onOpenCopyChat={() => {
-                if (activeChat) {
-                  setCopyTitle(`${activeChat.title} (Copy)`);
-                  setCopyDialogOpen(true);
-                } else {
-                  toast.error('No chat to copy');
-                }
+                if (activeChat) openCopyDialog(activeChat.id);
+                else toast.error('No chat to copy');
               }}
             />
           </ErrorBoundary>
@@ -202,39 +204,32 @@ const App: React.FC = () => {
         </main>
 
         <ErrorBoundary>
-          <SettingsModal isOpen={settingsOpen} onClose={closeSettings} />
-        </ErrorBoundary>
-
-        <ErrorBoundary>
-          <ModelSelectorModal
-            isOpen={modelSelectorOpen}
-            onClose={closeModelSelector}
-            activeProvider={activeProvider}
-            activeModel={activeModel}
-            onSelect={setProviderAndModel}
-          />
-        </ErrorBoundary>
-
-        <ErrorBoundary>
-          <ArchivedChatsPage
-            isOpen={archivedOpen}
-            onClose={() => setArchivedOpen(false)}
-            onRestored={() => window.location.reload()}
-          />
-        </ErrorBoundary>
-
-        <ErrorBoundary>
-          <BookmarksPage
-            isOpen={bookmarksOpen}
-            onClose={() => setBookmarksOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <SettingsModal isOpen={settingsOpen} onClose={closeSettings} />
+            <ModelSelectorModal
+              isOpen={modelSelectorOpen}
+              onClose={closeModelSelector}
+              activeProvider={activeProvider}
+              activeModel={activeModel}
+              onSelect={setProviderAndModel}
+            />
+            <ArchivedChatsPage
+              isOpen={archivedOpen}
+              onClose={() => setArchivedOpen(false)}
+              onRestored={() => window.location.reload()}
+            />
+            <BookmarksPage
+              isOpen={bookmarksOpen}
+              onClose={() => setBookmarksOpen(false)}
+            />
+          </Suspense>
         </ErrorBoundary>
 
         {/* Copy chat dialog */}
-        {copyDialogOpen && activeChat && (
+        {copyDialog && (
           <div
             className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-sm"
-            onClick={() => setCopyDialogOpen(false)}
+            onClick={() => setCopyDialog(null)}
           >
             <div
               className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl w-96 p-6"
@@ -243,25 +238,25 @@ const App: React.FC = () => {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Copy Chat</h3>
               <input
                 type="text"
-                value={copyTitle}
-                onChange={e => setCopyTitle(e.target.value)}
+                value={copyDialog.title}
+                onChange={e => setCopyDialog({ ...copyDialog, title: e.target.value })}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') confirmCopy();
+                  if (e.key === 'Escape') setCopyDialog(null);
+                }}
+                autoFocus
                 placeholder="New chat title"
                 className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
               />
               <div className="flex gap-2 justify-end">
                 <button
-                  onClick={() => setCopyDialogOpen(false)}
+                  onClick={() => setCopyDialog(null)}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    const newId = `chat-${Date.now()}`;
-                    handleCopyChat(activeChat.id);
-                    setCopyDialogOpen(false);
-                    toast.success('Chat copied');
-                  }}
+                  onClick={confirmCopy}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 transition-colors"
                 >
                   Copy
@@ -279,7 +274,7 @@ const App: React.FC = () => {
         theme={theme}
         toastOptions={{
           duration: 3000,
-          style: { fontFamily: 'Inter, sans-serif' },
+          style: { fontFamily: 'inherit' },
         }}
       />
     </ChatActionsProvider>

@@ -1,4 +1,5 @@
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
+import type { CopyChatOptions } from '../types';
 
 /**
  * ChatActionsContext — the single nerve centre for every user-initiated mutation in the app.
@@ -42,11 +43,12 @@ interface ChatActionsContextValue {
    * - Auto-titles the new chat from the first 30 characters of `content`.
    * - Cancels any currently running AI stream before starting a new one,
    *   preventing orphaned setState calls from a previous in-flight request.
-   * - Appends a placeholder AI message with `isStreaming: true` after a brief
-   *   delay (~380ms) to show the typing indicator before the first token lands.
-   * - As tokens arrive via streamMockAiResponse, they are appended to the
-   *   placeholder message's `content` field in-place.
+   * - Appends a placeholder AI message with `isStreaming: true`; the typing
+   *   indicator shows until the first token lands.
+   * - As tokens arrive from the active provider (services/providerDispatch.ts),
+   *   they are appended to the placeholder message's `content` in place.
    * - Sets `isStreaming: false` on completion, revealing the action menu.
+   * - Saves the user message and the finished reply to the server.
    *
    * Callers: ChatInput (primary), suggested prompt buttons in ChatArea.
    * Implemented in: hooks/useChats.ts → handleSendMessage
@@ -85,7 +87,7 @@ interface ChatActionsContextValue {
    * Behaviour:
    * - Flips the boolean in place; the Sidebar re-renders the PINNED / RECENT
    *   sections based on this flag automatically.
-   * - Persisted to localStorage immediately via the useEffect sync in useChats.ts.
+   * - Saved to the server (PATCH /api/chats/:id).
    *
    * Callers: Pin/unpin button in ChatItem (Sidebar).
    * Implemented in: hooks/useChats.ts → handleTogglePin
@@ -96,7 +98,7 @@ interface ChatActionsContextValue {
   handleTogglePin: (id: string) => void;
   handleDeleteChat: (id: string) => void;
   handleArchiveChat: (id: string) => void;
-  handleCopyChat: (id: string) => void;
+  handleCopyChat: (id: string, options?: CopyChatOptions) => void;
   handleRenameChat: (id: string, newTitle: string) => void;
   handleStopStreaming: () => void;
 
@@ -147,7 +149,7 @@ interface ChatActionsContextValue {
    * - Filters the message out of ChatSession.messages immutably.
    * - Updates ChatSession.updatedAt so the sidebar reflects the change.
    * - Fires a toast notification ('Message deleted' with 🗑️ icon).
-   * - Change is persisted to localStorage via the useEffect sync.
+   * - Deleted on the server too (DELETE /api/chats/:id/messages/:mid).
    *
    * Callers: Delete button in MessageActionMenu (visible on hover, for both roles).
    * Implemented in: hooks/useChats.ts → handleDeleteMessage
@@ -183,16 +185,12 @@ interface ChatActionsContextValue {
    * - Removes the old AI message from the chat.
    * - Shows a toast.loading('Regenerating response…') that resolves on completion.
    * - Appends a new placeholder message with `isStreaming: true`.
-   * - Calls streamMockAiResponse — replace with your real backend call.
+   * - Streams the replacement through the active provider, sending the
+   *   conversation so far (without the removed message) as history.
    * - On completion, sets `isStreaming: false` and resolves the loading toast.
    *
    * Callers: Regenerate button in MessageActionMenu (AI messages only).
    * Implemented in: hooks/useChats.ts → handleRegenerateMessage
-   *
-   * BACKEND NOTE: The current implementation regenerates without context — it
-   * does not pass conversation history to streamMockAiResponse. When connecting
-   * a real backend, retrieve the messages preceding `messageId` from the chat
-   * and pass them as the conversation history. See connecting.md §2 for details.
    */
   handleRegenerateMessage: (chatId: string, messageId: string) => void;
 
@@ -203,10 +201,11 @@ interface ChatActionsContextValue {
    * - Cancels any running stream.
    * - Clears chats array to empty.
    * - Resets activeChatId to null.
-   * - Clears all localStorage (chats, theme, UI state).
+   * - Deletes every chat on the server and clears the preferences kept in
+   *   localStorage (theme, UI state, selected model, assistants, ...).
    * - Fires toast.success('Chat history cleared').
    *
-   * Callers: "Clear all chat history" button in Settings modal (Privacy tab, danger zone).
+   * Callers: none yet; no button in the UI is wired to it.
    * Implemented in: hooks/useChats.ts → handleClearHistory
    *
    * This is a destructive action — should always be preceded by a confirmation dialog.
@@ -232,7 +231,7 @@ const ChatActionsContext = createContext<ChatActionsContextValue | null>(null);
  *
  * The value object is assembled from useChats() and useUIState() in App.tsx,
  * which is the only place that imports those hooks. This is the seam between
- * the state layer and the UI layer — see connecting.md for integration details.
+ * the state layer and the UI layer — see docs/architecture.md.
  */
 export const ChatActionsProvider = ChatActionsContext.Provider;
 

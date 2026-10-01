@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSettingsContext } from '../../context/SettingsContext';
 import { SettingToggle } from '../SettingToggle';
+import { PreviewNotice } from './PreviewNotice';
 import { WebSearchProvider } from '../../types';
 
 const PROVIDERS: { value: WebSearchProvider; label: string; description: string }[] = [
@@ -18,6 +19,8 @@ export const WebSearchTab: React.FC = () => {
         <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-1">Web Search</h3>
         <p className="text-gray-500 dark:text-gray-400 text-sm">Allow the assistant to search the web to answer questions.</p>
       </div>
+
+      <PreviewNotice />
 
       <SettingToggle
         label="Enable Web Search"

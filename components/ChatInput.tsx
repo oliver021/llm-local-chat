@@ -8,7 +8,7 @@ const INPUT_WARN_THRESHOLD = 3500;
 interface ChatInputProps {
   isCentered?: boolean;
   // Optional ref forwarded from App so the "/" shortcut can focus the input
-  inputRef?: React.RefObject<HTMLTextAreaElement>;
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   // Whether an AI response is currently streaming (disables send)
   isStreaming?: boolean;
 }
@@ -19,7 +19,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputR
 
   // Use the forwarded ref if provided, otherwise create a local one
   const localRef = useRef<HTMLTextAreaElement>(null);
-  const textareaRef = (inputRef ?? localRef) as React.RefObject<HTMLTextAreaElement>;
+  const textareaRef = inputRef ?? localRef;
 
   const handleSend = () => {
     if (input.trim()) {
@@ -45,7 +45,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputR
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }, [input]);
+  }, [input, textareaRef]);
 
   return (
     <div
@@ -54,7 +54,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputR
       <div className="relative flex items-center gap-2 bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-700 rounded-3xl p-2 shadow-sm focus-within:shadow-md focus-within:border-blue-300 dark:focus-within:border-blue-500/50 transition-all">
         <button
           type="button"
-          className="p-3 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+          disabled
+          title="File attachments are not supported yet"
+          className="p-3 text-gray-300 dark:text-gray-600 cursor-not-allowed rounded-full flex-shrink-0"
           aria-label="Attach file"
         >
           <Plus size={20} />

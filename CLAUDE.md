@@ -1,97 +1,52 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## Project
 
-**llm-local-chat** — a React + TypeScript chat UI template (ChatGPT-like interface) that ships with a complete UI shell and a mock AI service, designed to be wired to any real LLM backend.
+**Aura Chat** (`llm-local-chat`): a self-hosted chat UI for llama.cpp, Ollama, OpenAI and Anthropic.
+React 19 + TypeScript + Vite + Tailwind 4 on the client; one Express 5 + SQLite server that serves the UI,
+stores chats and proxies to model servers (API keys never reach the browser).
 
-Key docs:
-- **`roadmap.md`** — full feature status, phase-by-phase implementation plan, and what's UI-only vs functional
-- **`connecting.md`** — data contracts, function signatures, and integration patterns every agent needs before touching backend code
-- **`.claude/llm-connection-example-specs.yaml`** — backend YAML config schema
+Read `docs/architecture.md` first; `README.md` covers running it.
 
 ## Commands
 
 ```bash
-npm run dev          # Start dev server (Vite, port 5173)
-npm run build        # Production build → dist/
-npm run preview      # Preview production build
-npm run type-check   # TypeScript check (no emit)
-npm run lint         # ESLint
-npm test             # Vitest unit tests
-npm run test:e2e     # Playwright E2E tests
+npm run dev:all        # Vite (5173) + API with tsx watch (3001)
+npm run build          # UI -> dist/, server -> dist-server/
+npm start              # production server (serves dist/)
+npm run lint           # ESLint, --max-warnings 0
+npm run type-check     # tsc for the UI and for the server (two tsconfigs)
+npm test               # Vitest: tests/client (jsdom) + tests/server (node)
+npm run test:e2e       # Playwright; builds and starts its own app and mock model server
+npm run mock:llm       # fake llama-server on :8080 for manual testing
 ```
 
-## Architecture
+Run `npm run lint && npm run type-check && npm test` before finishing; run `npm run test:e2e` after
+touching chat flows, the server or the build.
 
-**State management** lives in `hooks/useChats.ts`. All chat state (sessions, streaming lifecycle, cancel) is managed with `useState`/`useCallback` and distributed via `context/ChatContext.tsx`.
+## Architecture in brief
 
-**Data flow:**
-```
-components/ → context/ChatContext.tsx → hooks/useChats.ts → services/<provider>Service.ts → LLM
-                                                          → utils/storage.ts → localStorage
-```
+- **Server** (`server/`): `createApp({ config, db })` in `app.ts`; config from env in `config.ts`; streaming
+  allow-listed proxies in `proxy.ts`; routers take their `db` as a parameter. ESM with `.js` import
+  suffixes (NodeNext), compiled by `tsconfig.server.build.json`.
+- **Client state**: `hooks/useChats.ts` owns chat state and mirrors changes to the server through
+  `utils/chatApi.ts`. Components reach it only through `context/ChatContext.tsx`.
+- **Providers**: `services/providerDispatch.ts` maps a provider to a streaming function
+  `(messages, onChunk, onDone, onError, systemPrompt?) => cancel`. See "Adding a provider" in
+  `docs/architecture.md` for every place to touch.
+- **Styling**: Tailwind v4 through `@tailwindcss/postcss`; theme tokens live in `index.css` (`@theme`).
+  There is no `tailwind.config.js`.
 
-**Key files:**
-- `types.ts` — `Message`, `ChatSession`, `Theme` type definitions
-- `constants.ts` — mock chat data and AI response strings
-- `services/mockAiService.ts` — streaming mock (keep for tests; replace for real use)
-- `services/llamaCppService.ts` — **live llama.cpp/llama-server integration** (Phase 1 ✅)
-- `hooks/useChats.ts` — **primary integration seam** — swap provider import here
-- `context/ChatContext.tsx` — action dispatcher; do not touch for backend work
-- `utils/storage.ts` — localStorage persistence (chats, theme, UI state)
+## Conventions and gotchas
 
-**Styling:** Tailwind CDN only. Custom theme colors and fonts are in the `<script>` tag in `index.html`, not in a config file.
-
-## Integration — Two-Point Model
-
-Every provider swap touches exactly two places (see `connecting.md` for full contracts):
-
-1. **`services/<provider>Service.ts`** — the only file that talks to the network  
-   Required signature:
-   ```ts
-   function streamXxxResponse(
-     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-     onChunk:  (chunk: string) => void,
-     onDone:   () => void,
-     onError:  (err: Error) => void
-   ): () => void   // cancel function
-   ```
-
-2. **`hooks/useChats.ts`** — swap the import at two call sites:
-   - `handleSendMessage` (~line 153)
-   - `handleRegenerateMessage` (~line 260)
-
-Role mapping — always apply before building history:
-```ts
-role: m.role === 'ai' ? 'assistant' : 'user'
-```
-
-## LLM Provider Roadmap
-
-See `roadmap.md` for full implementation details per phase.
-
-| Phase | Provider | Type | Config key | Status |
-|---|---|---|---|---|
-| 1 | llama.cpp / llama-server | Local (Docker) | `llm-llamacpp` | ✅ Done |
-| 2 | OpenAI | Cloud API | `llm-openai` | Planned |
-| 3 | Anthropic Claude | Cloud API | `llm-claude` | Planned |
-| 4 | Ollama | Local | `llm-ollama` | Planned |
-| 5 | Provider selector UI | — | — | Planned |
-
-## Docker Quick-Start (Phase 1)
-
-```bash
-# Place a GGUF model
-cp your-model.gguf ./models/model.gguf
-
-# Build and run
-docker compose up --build
-# → http://localhost:3000
-
-# Dev without Docker
-./llama-server -m ./models/model.gguf --host 0.0.0.0 --port 8080
-npm run dev
-# → http://localhost:5173 (Vite proxy: /v1 → localhost:8080)
-```
+- Never put a secret in a `VITE_*` variable: it ends up in the public bundle. Keys are read by the server only.
+- Message ids are primary keys in SQLite. Anything that duplicates messages must generate new ids.
+- Callbacks in `useChats` are memoised: keep their dependency arrays complete (lint fails on
+  `react-hooks/exhaustive-deps` warnings for a reason; a stale `systemPrompt` was a real bug).
+- Do not add third-party network requests from the UI (fonts, avatars, analytics). The CSP in
+  `server/app.ts` blocks them and an e2e test fails on them.
+- Web Search, MCP and Voice settings are UI-only previews; do not describe them as working.
+- Add or update tests with every change. Server tests build the real app (`tests/server/helpers.ts`);
+  client tests use `tests/client/services/helpers.ts` for fetch/SSE fakes.

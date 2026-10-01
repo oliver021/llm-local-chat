@@ -68,6 +68,28 @@ function chatCreatedAt(chat: ChatSession): number {
   return isNaN(ts) ? chat.updatedAt : ts;
 }
 
+// ── Sortable column header ─────────────────────────────────────────────────────
+
+interface SortBtnProps {
+  col: SortKey;
+  label: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onToggle: (key: SortKey) => void;
+}
+
+const SortBtn: React.FC<SortBtnProps> = ({ col, label, sortKey, sortDir, onToggle }) => (
+  <button
+    onClick={() => onToggle(col)}
+    className="flex items-center gap-1 group hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+  >
+    {label}
+    <span className={`text-[10px] transition-opacity ${sortKey === col ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}>
+      {sortKey === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+    </span>
+  </button>
+);
+
 // ── Read-only chat viewer ──────────────────────────────────────────────────────
 
 const ChatViewer: React.FC<{ chat: ChatSession; onClose: () => void }> = ({ chat, onClose }) => (
@@ -204,18 +226,6 @@ export const ArchivedChatsPage: React.FC<ArchivedChatsPageProps> = ({ isOpen, on
       return sortDir === 'asc' ? av - bv : bv - av;
     });
 
-  const SortBtn: React.FC<{ col: SortKey; label: string }> = ({ col, label }) => (
-    <button
-      onClick={() => toggleSort(col)}
-      className="flex items-center gap-1 group hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
-    >
-      {label}
-      <span className={`text-[10px] transition-opacity ${sortKey === col ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}>
-        {sortKey === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
-      </span>
-    </button>
-  );
-
   if (!isOpen) return null;
 
   const confirmTarget = chats.find(c => c.id === confirmDeleteId);
@@ -290,16 +300,16 @@ export const ArchivedChatsPage: React.FC<ArchivedChatsPageProps> = ({ isOpen, on
                 <thead className="sticky top-0 bg-gray-50/90 dark:bg-gray-850/90 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800">
                   <tr className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                     <th className="text-left px-6 py-3 w-[35%]">
-                      <SortBtn col="title" label="Name" />
+                      <SortBtn col="title" label="Name" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
                     </th>
                     <th className="text-left px-4 py-3 w-[10%]">
-                      <SortBtn col="messages" label="Messages" />
+                      <SortBtn col="messages" label="Messages" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
                     </th>
                     <th className="text-left px-4 py-3 w-[15%]">
-                      <SortBtn col="createdAt" label="Created" />
+                      <SortBtn col="createdAt" label="Created" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
                     </th>
                     <th className="text-left px-4 py-3 w-[20%]">
-                      <SortBtn col="updatedAt" label="Last Message" />
+                      <SortBtn col="updatedAt" label="Last Message" sortKey={sortKey} sortDir={sortDir} onToggle={toggleSort} />
                     </th>
                     <th className="text-right px-6 py-3 w-[20%]">Actions</th>
                   </tr>

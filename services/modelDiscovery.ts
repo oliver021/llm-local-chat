@@ -1,4 +1,5 @@
 import type { ProviderKey } from '../hooks/useProvider';
+import { ANTHROPIC_PROXY_PATH, OPENAI_PROXY_PATH } from './providerErrors';
 
 export interface ModelInfo {
   id: string;             // value passed to the service as `model`
@@ -177,45 +178,72 @@ export function formatDownloads(n: number): string {
 
 // ── OpenAI ─────────────────────────────────────────────────────────────────────
 
-export async function discoverOpenAiModels(): Promise<ModelInfo[]> {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('VITE_OPENAI_API_KEY is not set — add it to .env.local');
-  }
-
+/** Read the message our server (or the upstream API) put in an error response. */
+async function errorMessageFrom(res: Response, fallback: string): Promise<string> {
   try {
-    const res = await fetch('https://api.openai.com/v1/models', {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) throw new Error(`OpenAI API error: ${res.status}`);
-
-    const data = await res.json();
-    const chatModels: Array<{ id: string; created: number }> = (data.data ?? [])
-      .filter((m: { id: string }) =>
-        m.id.startsWith('gpt-') || m.id.startsWith('o1') || m.id.startsWith('o3')
-      )
-      .sort((a: { created: number }, b: { created: number }) => b.created - a.created);
-
-    return chatModels.map((m) => ({
-      id: m.id,
-      name: m.id,
-      source: 'openai' as const,
-    }));
-  } catch (err) {
-    throw err instanceof Error ? err : new Error(String(err));
+    const body = await res.json();
+    const message: unknown = body?.error?.message ?? body?.message;
+    if (typeof message === 'string' && message) return message;
+  } catch {
+    // empty or non-JSON body
   }
+  return fallback;
+}
+
+/** Model ids that are not usable for chat completions (audio, images, embeddings, ...). */
+const NON_CHAT_MODEL = /(audio|realtime|transcribe|tts|image|embedding|moderation|whisper|dall-e|search|instruct)/i;
+
+export async function discoverOpenAiModels(): Promise<ModelInfo[]> {
+  // The server holds the API key and forwards the request.
+  const res = await fetch(`${OPENAI_PROXY_PATH}/models`, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) {
+    throw new Error(await errorMessageFrom(res, `OpenAI API error: ${res.status}`));
+  }
+
+  const data = await res.json();
+  const chatModels: Array<{ id: string; created: number }> = (data.data ?? [])
+    .filter(
+      (m: { id: string }) =>
+        /^(gpt-|o\d|chatgpt-)/.test(m.id) && !NON_CHAT_MODEL.test(m.id)
+    )
+    .sort((a: { created: number }, b: { created: number }) => b.created - a.created);
+
+  return chatModels.map((m) => ({
+    id: m.id,
+    name: m.id,
+    source: 'openai' as const,
+  }));
 }
 
 // ── Anthropic ──────────────────────────────────────────────────────────────────
 
+/** Shown when the live model list cannot be fetched. */
+export const CLAUDE_FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'claude-fable-5-1',          name: 'Claude Fable 5.1',  source: 'anthropic' },
+  { id: 'claude-opus-5-5',           name: 'Claude Opus 5.5',   source: 'anthropic' },
+  { id: 'claude-sonnet-5-5',         name: 'Claude Sonnet 5.5', source: 'anthropic' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5',  source: 'anthropic' },
+];
+
 export async function discoverClaudeModels(): Promise<ModelInfo[]> {
-  // Anthropic has no public model-listing endpoint — return known models
-  return [
-    { id: 'claude-opus-4-7',           name: 'Claude Opus 4.7',  source: 'anthropic' },
-    { id: 'claude-sonnet-4-6',         name: 'Claude Sonnet 4.6', source: 'anthropic' },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5',  source: 'anthropic' },
-  ];
+  try {
+    // Models API, called through the server so the API key stays there.
+    const res = await fetch(`${ANTHROPIC_PROXY_PATH}/v1/models?limit=100`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return CLAUDE_FALLBACK_MODELS;
+    const data = await res.json();
+    const models: ModelInfo[] = (data.data ?? []).map(
+      (m: { id: string; display_name?: string }) => ({
+        id: m.id,
+        name: m.display_name ?? m.id,
+        source: 'anthropic' as const,
+      })
+    );
+    return models.length > 0 ? models : CLAUDE_FALLBACK_MODELS;
+  } catch {
+    return CLAUDE_FALLBACK_MODELS;
+  }
 }
 
 // ── Ollama ─────────────────────────────────────────────────────────────────────
@@ -381,6 +409,17 @@ export async function discoverModels(provider: ProviderKey): Promise<ModelInfo[]
 
 export type ConnectionStatus = 'connected' | 'no-key' | 'offline' | 'unknown';
 
+/** Which cloud providers have an API key on the server (booleans only, never the keys). */
+async function fetchConfiguredProviders(): Promise<{ openai: boolean; anthropic: boolean }> {
+  const res = await fetch('/api/providers', { signal: AbortSignal.timeout(2000) });
+  if (!res.ok) throw new Error(`providers ${res.status}`);
+  const data = await res.json();
+  return {
+    openai: Boolean(data?.openai?.configured),
+    anthropic: Boolean(data?.anthropic?.configured),
+  };
+}
+
 export async function checkProviderStatus(provider: ProviderKey): Promise<ConnectionStatus> {
   try {
     switch (provider) {
@@ -389,10 +428,10 @@ export async function checkProviderStatus(provider: ProviderKey): Promise<Connec
         return res.ok ? 'connected' : 'offline';
       }
       case 'llm-openai':
-        return import.meta.env.VITE_OPENAI_API_KEY ? 'connected' : 'no-key';
+        return (await fetchConfiguredProviders()).openai ? 'connected' : 'no-key';
 
       case 'llm-claude':
-        return import.meta.env.VITE_ANTHROPIC_API_KEY ? 'connected' : 'no-key';
+        return (await fetchConfiguredProviders()).anthropic ? 'connected' : 'no-key';
 
       case 'llm-ollama': {
         const res = await fetch('/ollama/api/tags', { signal: AbortSignal.timeout(2000) });

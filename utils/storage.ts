@@ -50,9 +50,9 @@ function storageSet<T>(key: string, value: T): void {
 interface UIState {
   sidebarOpen: boolean;
   settingsOpen: boolean;
-  compactMode?: boolean;
-  dataCollection?: boolean;
-  chatHistory?: boolean;
+  compactMode: boolean;
+  dataCollection: boolean;
+  chatHistory: boolean;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────

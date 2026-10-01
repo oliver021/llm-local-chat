@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useSettingsContext } from '../../context/SettingsContext';
 import { Plus, Trash2, Pencil, X } from '../Icons';
 import { MCPServer } from '../../types';
+import { PreviewNotice } from './PreviewNotice';
 
 interface EditState {
   name: string;
@@ -48,6 +49,8 @@ export const MCPTab: React.FC = () => {
         <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-1">MCP Servers</h3>
         <p className="text-gray-500 dark:text-gray-400 text-sm">Manage Model Context Protocol server connections.</p>
       </div>
+
+      <PreviewNotice />
 
       {/* Server list */}
       <div className="space-y-3">

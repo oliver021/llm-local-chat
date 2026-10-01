@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, User, Palette, Sparkles, Globe, Cpu, Mic, Bot } from './Icons';
 import { useFocusTrap } from '../utils/focusTrap';
-import { AccountTab } from './settings/AccountTab';
+import { ProfileTab } from './settings/ProfileTab';
 import { AppearanceTab } from './settings/AppearanceTab';
 import { PersonalizationTab } from './settings/PersonalizationTab';
 import { WebSearchTab } from './settings/WebSearchTab';
@@ -14,10 +14,10 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabId = 'account' | 'appearance' | 'personalization' | 'webSearch' | 'mcp' | 'voice' | 'assistants';
+type TabId = 'profile' | 'appearance' | 'personalization' | 'webSearch' | 'mcp' | 'voice' | 'assistants';
 
 const TABS = [
-  { id: 'account'         as const, label: 'Account',         icon: User      },
+  { id: 'profile'         as const, label: 'Profile',         icon: User      },
   { id: 'appearance'      as const, label: 'Appearance',       icon: Palette   },
   { id: 'personalization' as const, label: 'Personalization',  icon: Sparkles  },
   { id: 'webSearch'       as const, label: 'Web Search',       icon: Globe     },
@@ -28,7 +28,7 @@ const TABS = [
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('account');
+  const [activeTab, setActiveTab] = useState<TabId>('profile');
 
   useFocusTrap(modalRef as React.RefObject<HTMLElement>);
 
@@ -84,7 +84,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
         {/* Right Content Area */}
         <div className="flex-1 overflow-y-auto p-8 md:p-12 bg-white dark:bg-gray-900">
           <div className="max-w-2xl">
-            {activeTab === 'account'         && <AccountTab />}
+            {activeTab === 'profile'         && <ProfileTab />}
             {activeTab === 'appearance'      && <AppearanceTab />}
             {activeTab === 'personalization' && <PersonalizationTab />}
             {activeTab === 'webSearch'       && <WebSearchTab />}

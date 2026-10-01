@@ -1,11 +1,12 @@
-import type { ProviderKey, ConnectionStatus } from '../../../hooks/useProvider';
+import type { ProviderKey } from '../../../hooks/useProvider';
+import type { ConnectionStatus } from '../../../services/modelDiscovery';
 
 export function ProviderHint({ provider, status }: { provider: ProviderKey; status?: ConnectionStatus }) {
   const msgs: Partial<Record<ProviderKey, Record<string, string>>> = {
-    'llm-llamacpp': { connected: 'llama-server is running.', offline: 'llama-server not detected. Start it or run docker compose up.' },
-    'llm-openai':   { connected: 'API key found.', 'no-key': 'Set VITE_OPENAI_API_KEY in .env.local to enable.' },
-    'llm-claude':   { connected: 'API key found.', 'no-key': 'Set VITE_ANTHROPIC_API_KEY in .env.local to enable.' },
-    'llm-ollama':   { connected: 'Ollama is running.', offline: 'Ollama not detected. Run: ollama serve' },
+    'llm-llamacpp': { connected: 'llama-server is running.', offline: 'llama-server not reachable. Start it, or point LLAMA_SERVER_URL at it in .env.' },
+    'llm-openai':   { connected: 'API key configured on the server.', 'no-key': 'Set OPENAI_API_KEY in .env and restart the server.' },
+    'llm-claude':   { connected: 'API key configured on the server.', 'no-key': 'Set ANTHROPIC_API_KEY in .env and restart the server.' },
+    'llm-ollama':   { connected: 'Ollama is running.', offline: 'Ollama not reachable. Run `ollama serve`, or point OLLAMA_URL at it in .env.' },
   };
   const msg = status ? msgs[provider]?.[status] : undefined;
   if (!msg) return null;

@@ -52,6 +52,14 @@ export interface ChatSession {
   messages: Message[];
 }
 
+/** Options for duplicating a chat (plain copy, or a branch that stops at a given message). */
+export interface CopyChatOptions {
+  /** Title of the new chat. Defaults to "<original title> (Copy)". */
+  title?: string;
+  /** Copy only up to and including this message (used by "Branch from here"). */
+  upToMessageId?: string;
+}
+
 export type Theme = 'light' | 'dark';
 
 export type ThemeName = 'default' | 'ocean' | 'sunset' | 'forest' | 'violet' | 'rose' | 'midnight' | 'gold';

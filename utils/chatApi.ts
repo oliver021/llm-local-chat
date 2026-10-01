@@ -8,7 +8,7 @@ function classifyNetworkError(err: unknown, _url: string): AppError {
   if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('econnrefused')) {
     base.code = 'NETWORK_UNREACHABLE';
     base.userFacing = true;
-    base.userMessage = 'Backend unreachable — make sure the API server is running on port 3001.';
+    base.userMessage = 'Backend unreachable — make sure the server is running (npm run dev:all, or docker compose up).';
     base.retryable = true;
   } else {
     base.code = 'UNKNOWN';
@@ -42,7 +42,7 @@ async function req<T = { ok: boolean }>(
 
   try {
     return await res.json() as T;
-  } catch (err) {
+  } catch {
     const appErr = new Error(`Failed to parse response from ${url}`) as AppError;
     appErr.code = 'UNKNOWN';
     appErr.userFacing = false;
@@ -87,7 +87,7 @@ export function dbGetArchivedChats(): Promise<ChatSession[]> {
   return req<ChatSession[]>(`${BASE}/archived`);
 }
 
-export async function dbCopyChat(chatId: string, newId: string, newTitle: string, messages: any[]): Promise<void> {
+export async function dbCopyChat(newId: string, newTitle: string, messages: Message[]): Promise<void> {
   await dbCreateChat({
     id: newId,
     title: newTitle,

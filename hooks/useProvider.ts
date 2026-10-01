@@ -19,7 +19,7 @@ export const PROVIDER_META: ProviderLabels[] = [
 const DEFAULT_MODELS: Record<ProviderKey, string> = {
   'llm-llamacpp': 'model.gguf',
   'llm-openai':   'gpt-4o',
-  'llm-claude':   'claude-sonnet-4-6',
+  'llm-claude':   'claude-sonnet-5-5',
   'llm-ollama':   'llama3.1',
 };
 

@@ -9,7 +9,6 @@
  * - Tables, blockquotes, lists: consistent spacing
  */
 
-import React from 'react';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { Components } from 'react-markdown';
@@ -38,7 +37,7 @@ SyntaxHighlighter.registerLanguage('css',        css);
 
 export const markdownComponents: Components = {
   // ── Code ────────────────────────────────────────────────────────────────
-  code({ className, children, ...props }) {
+  code({ className, children, node: _node, ...props }) {
     const match = /language-(\w+)/.exec(className ?? '');
     const isBlock = !!match;
     const childrenStr = children ? String(children).replace(/\n$/, '') : '';
@@ -57,7 +56,6 @@ export const markdownComponents: Components = {
               language={match[1]}
               PreTag="div"
               customStyle={{ margin: 0, borderRadius: 0, padding: '1rem', fontSize: '0.8125rem', lineHeight: '1.6' }}
-              {...props}
             >
               {childrenStr}
             </SyntaxHighlighter>

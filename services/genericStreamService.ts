@@ -11,13 +11,24 @@ function makeStreamError(message: string, code: AppError['code'], userMessage: s
   return err;
 }
 
+/** Pull a human-readable message out of an OpenAI-style or plain JSON error body. */
+async function readErrorDetail(response: Response): Promise<string | undefined> {
+  try {
+    const body = await response.json();
+    const detail: unknown = body?.error?.message ?? body?.message ?? body?.error;
+    return typeof detail === 'string' && detail.trim() ? detail.trim().slice(0, 300) : undefined;
+  } catch {
+    return undefined; // empty or non-JSON body
+  }
+}
+
 /**
  * Generic OpenAI-compatible SSE streaming client.
  *
  * Used by both llama.cpp and Ollama — both expose the same
  * POST /v1/chat/completions endpoint with SSE streaming.
  *
- * @param baseUrl  Base URL for the completions endpoint, e.g. '/v1' or '/ollama/v1'
+ * @param baseUrl  Base path of the completions endpoint on our server, e.g. '/v1' or '/ollama/v1'
  * @param model    Model identifier to pass in the request body
  * @param messages Conversation history (roles must already be mapped: 'ai' → 'assistant')
  * @param onChunk  Called for each text fragment received
@@ -84,14 +95,23 @@ export function streamOpenAICompatible(
 
     if (!response.ok) {
       clearTimer();
-      const code: AppError['code'] = response.status === 401 || response.status === 403
-        ? 'AUTH_INVALID'
-        : 'MODEL_ERROR';
-      onError(makeStreamError(
-        `Server error: ${response.status} ${response.statusText}`,
-        code,
-        `Model server returned an error (${response.status}). Check your model and provider settings.`
-      ));
+      const status = response.status;
+      const detail = await readErrorDetail(response);
+
+      let code: AppError['code'] = 'MODEL_ERROR';
+      if (status === 401 || status === 403) code = 'AUTH_INVALID';
+      else if (status === 502 || status === 503) code = 'NETWORK_UNREACHABLE';
+      else if (status === 504) code = 'NETWORK_TIMEOUT';
+
+      // 502/504 come from our own server when the model server is down or too slow;
+      // its message already says which one and where.
+      const userMessage = !detail
+        ? `Model server returned an error (${status}). Check your model and provider settings.`
+        : code === 'NETWORK_UNREACHABLE' || code === 'NETWORK_TIMEOUT'
+          ? detail
+          : `Model server error (${status}): ${detail}`;
+
+      onError(makeStreamError(`Server error: ${status} ${response.statusText}`, code, userMessage));
       return;
     }
 

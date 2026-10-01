@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { AppError, ChatSession, Message } from '../types';
+import { AppError, ChatSession, CopyChatOptions, Message } from '../types';
 import { getStreamFn } from '../services/providerDispatch';
 import type { ProviderKey } from './useProvider';
 import { drainLegacyChats, clearAllStorage } from '../utils/storage';
@@ -18,6 +18,15 @@ import {
   dbCopyChat,
 } from '../utils/chatApi';
 
+interface StreamingReply {
+  chatId: string;
+  messageId: string;
+  /** Timestamp of the placeholder message, kept so the saved reply sorts where it appeared. */
+  timestamp: number;
+  /** Everything received so far. */
+  content: string;
+}
+
 interface UseChatsResult {
   chats: ChatSession[];
   activeChatId: string | null;
@@ -30,7 +39,7 @@ interface UseChatsResult {
   handleDeleteChat: (id: string) => void;
   handleArchiveChat: (id: string) => void;
   handleRenameChat: (id: string, newTitle: string) => void;
-  handleCopyChat: (id: string) => void;
+  handleCopyChat: (id: string, options?: CopyChatOptions) => void;
   handleStopStreaming: () => void;
   handleSendMessage: (content: string) => void;
   handleCopyMessage: (messageId: string) => void;
@@ -76,8 +85,11 @@ export function useChats(
   const chatsRef = useRef<ChatSession[]>([]);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
 
-  // Tracks the chat+message currently being streamed so we can persist on stop/error.
-  const streamingCtxRef = useRef<{ chatId: string; messageId: string } | null>(null);
+  // The reply being streamed right now. Its text is accumulated here, not read back from
+  // React state: state only catches up after a render, so when the last tokens and the end
+  // of the stream arrive in one network read (normal with a real model), reading it back
+  // would drop the tail of the reply from what gets saved.
+  const streamingCtxRef = useRef<StreamingReply | null>(null);
 
   // ── Boot: load from DB, migrate legacy localStorage chats ─────────────────
 
@@ -114,6 +126,18 @@ export function useChats(
   // Cancel any in-flight stream on unmount
   useEffect(() => {
     return () => { cancelStreamRef.current?.(); };
+  }, []);
+
+  // Reloading or closing the tab mid-reply aborts the request. Cancel it ourselves
+  // first so the abort is silent instead of being stored as a "could not reach
+  // the model" reply.
+  useEffect(() => {
+    const onPageHide = () => {
+      cancelStreamRef.current?.();
+      cancelStreamRef.current = null;
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
   }, []);
 
   // ── Private helper ─────────────────────────────────────────────────────────
@@ -175,21 +199,34 @@ export function useChats(
     toast.success('Conversation archived');
   }, []);
 
-  const handleCopyChat = useCallback((id: string) => {
-    const chat = chats.find(c => c.id === id);
+  const handleCopyChat = useCallback((id: string, options: CopyChatOptions = {}) => {
+    const chat = chatsRef.current.find(c => c.id === id);
     if (!chat) return;
-    const newId = `chat-${Date.now()}`;
+
+    let source = chat.messages.filter(m => !m.isStreaming);
+    if (options.upToMessageId) {
+      const idx = source.findIndex(m => m.id === options.upToMessageId);
+      if (idx === -1) return;
+      source = source.slice(0, idx + 1);
+    }
+
+    cancelActiveStream();
+    const now = Date.now();
+    const newId = `chat-${now}`;
+    // Message ids are primary keys in the database, so the copy needs fresh ones.
+    const messages = source.map((m, i) => ({ ...m, id: `msg-${now}-${i}` }));
     const newChat: ChatSession = {
       id: newId,
-      title: `${chat.title} (Copy)`,
+      title: options.title?.trim() || `${chat.title} (Copy)`,
       isPinned: false,
-      updatedAt: Date.now(),
-      messages: chat.messages.map(m => ({ ...m })),
+      updatedAt: now,
+      messages,
     };
     setChats(prev => [newChat, ...prev]);
     setActiveChatId(newId);
-    db(dbCopyChat(id, newId, newChat.title, chat.messages), 'copy chat');
-  }, [chats]);
+    db(dbCopyChat(newId, newChat.title, messages), 'copy chat');
+    toast.success(options.upToMessageId ? 'Branched into a new chat' : 'Chat copied');
+  }, [cancelActiveStream]);
 
   const handleRenameChat = useCallback((id: string, newTitle: string) => {
     const trimmed = newTitle.trim();
@@ -205,14 +242,15 @@ export function useChats(
     cancelStreamRef.current = null;
     setIsTyping(false);
 
-    // Persist partial AI message content before clearing isStreaming
+    // Persist the partial AI reply before clearing isStreaming
     const ctx = streamingCtxRef.current;
     if (ctx) {
-      const chat = chatsRef.current.find(c => c.id === ctx.chatId);
-      const msg = chat?.messages.find(m => m.id === ctx.messageId);
-      if (msg) {
-        db(dbAddMessage(ctx.chatId, { ...msg, isStreaming: undefined }), 'save partial message');
-      }
+      db(dbAddMessage(ctx.chatId, {
+        id: ctx.messageId,
+        role: 'ai',
+        content: ctx.content,
+        timestamp: ctx.timestamp,
+      }), 'save partial message');
       streamingCtxRef.current = null;
     }
 
@@ -293,7 +331,13 @@ export function useChats(
         )
       );
 
-      streamingCtxRef.current = { chatId: currentChatId, messageId: aiMessageId };
+      const reply: StreamingReply = {
+        chatId: currentChatId,
+        messageId: aiMessageId,
+        timestamp: placeholder.timestamp,
+        content: '',
+      };
+      streamingCtxRef.current = reply;
 
       const currentMessages = chatsRef.current.find(c => c.id === currentChatId)?.messages ?? [];
       const history = [
@@ -307,6 +351,7 @@ export function useChats(
       const cancel = getStreamFn(activeProvider, activeModel)(
         history,
         (token) => {
+          reply.content += token;
           setIsTyping(false);
           setChats(prev =>
             prev.map(chat => {
@@ -338,18 +383,14 @@ export function useChats(
             })
           );
           // Persist complete AI message and update session timestamp
-          const finalContent =
-            chatsRef.current
-              .find(c => c.id === currentChatId)
-              ?.messages.find(m => m.id === aiMessageId)?.content ?? '';
           db(dbAddMessage(currentChatId, {
             id: aiMessageId,
             role: 'ai',
-            content: finalContent,
+            content: reply.content,
             timestamp: placeholder.timestamp,
           }), 'save ai message');
           db(dbUpdateChat(currentChatId, { updatedAt: now }), 'update chat timestamp');
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
@@ -376,7 +417,7 @@ export function useChats(
             timestamp: placeholder.timestamp,
           }), 'save error message');
           toast.error(appErr.userMessage ?? err.message);
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         systemPrompt
@@ -384,7 +425,7 @@ export function useChats(
 
       cancelStreamRef.current = cancel;
     },
-    [activeChatId, cancelActiveStream, activeProvider, activeModel]
+    [activeChatId, cancelActiveStream, activeProvider, activeModel, systemPrompt]
   );
 
   // ── Message action handlers ────────────────────────────────────────────────
@@ -470,7 +511,13 @@ export function useChats(
         )
       );
 
-      streamingCtxRef.current = { chatId, messageId: newAiId };
+      const reply: StreamingReply = {
+        chatId,
+        messageId: newAiId,
+        timestamp: placeholder.timestamp,
+        content: '',
+      };
+      streamingCtxRef.current = reply;
 
       const history = (chatsRef.current.find(c => c.id === chatId)?.messages ?? [])
         .filter(m => m.id !== messageId)
@@ -482,6 +529,7 @@ export function useChats(
       const cancel = getStreamFn(activeProvider, activeModel)(
         history,
         (token) => {
+          reply.content += token;
           setChats(prev =>
             prev.map(chat => {
               if (chat.id !== chatId) return chat;
@@ -508,19 +556,15 @@ export function useChats(
               };
             })
           );
-          const finalContent =
-            chatsRef.current
-              .find(c => c.id === chatId)
-              ?.messages.find(m => m.id === newAiId)?.content ?? '';
           db(dbAddMessage(chatId, {
             id: newAiId,
             role: 'ai',
-            content: finalContent,
+            content: reply.content,
             timestamp: placeholder.timestamp,
           }), 'save regenerated message');
           db(dbUpdateChat(chatId, { updatedAt: now }), 'update chat timestamp');
           toast.success('Response regenerated', { id: toastId });
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
@@ -546,7 +590,7 @@ export function useChats(
             timestamp: placeholder.timestamp,
           }), 'save error message');
           toast.error(appErr.userMessage ?? err.message, { id: toastId });
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         systemPrompt
@@ -554,7 +598,7 @@ export function useChats(
 
       cancelStreamRef.current = cancel;
     },
-    [cancelActiveStream, activeProvider, activeModel]
+    [cancelActiveStream, activeProvider, activeModel, systemPrompt]
   );
 
   const handleClearHistory = useCallback(() => {

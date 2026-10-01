@@ -14,7 +14,7 @@ interface ChatAreaProps {
   chat: ChatSession | null;
   isTyping?: boolean;
   // Forwarded ref so the global "/" shortcut can focus the input from App.tsx
-  inputRef?: React.RefObject<HTMLTextAreaElement>;
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) => {
@@ -35,10 +35,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) 
   const streamingMsg = chat?.messages.find(m => m.isStreaming);
   const showTypingIndicator = isTyping || (streamingMsg != null && streamingMsg.content === '');
 
-  const messageGroups = useMemo(() => {
-    if (!chat || chat.messages.length === 0) return [];
-    return groupMessagesByDate(chat.messages);
-  }, [chat?.messages]);
+  const messages = chat?.messages;
+  const messageGroups = useMemo(
+    () => (messages && messages.length > 0 ? groupMessagesByDate(messages) : []),
+    [messages]
+  );
 
   // When streaming ends, re-enable auto-scroll for the next exchange
   useEffect(() => {
