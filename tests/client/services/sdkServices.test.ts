@@ -44,10 +44,13 @@ const claudeEvents = (text: string) => [
   `event: message_stop\ndata: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
 ];
 
-/** Wait until the lazily loaded SDK has made its request. */
-async function settle(times = 10) {
+/** Give anything still pending (callbacks that must NOT fire) a few turns of the event loop. */
+async function settle(times = 5) {
   for (let i = 0; i < times; i++) await flush();
 }
+
+/** The SDK is imported lazily, so the first request can take a while: wait for the real condition. */
+const until = (assertion: () => void) => vi.waitFor(assertion, { timeout: 5000 });
 
 function run(stream: StreamFn, systemPrompt?: string) {
   const onChunk = vi.fn();
@@ -63,7 +66,7 @@ describe('OpenAI service', () => {
       sseResponse([openAiChunk('Hel'), openAiChunk('lo'), 'data: [DONE]\n\n'])
     );
     const { onChunk, onDone, onError } = run(streamOpenAiResponse, 'Be brief');
-    await settle();
+    await until(() => expect(onDone).toHaveBeenCalled());
 
     expect(onChunk.mock.calls.map((c) => c[0])).toEqual(['Hel', 'lo']);
     expect(onDone).toHaveBeenCalledTimes(1);
@@ -83,7 +86,7 @@ describe('OpenAI service', () => {
       jsonResponse({ type: 'error', error: { type: 'not_configured', message: 'OPENAI_API_KEY is not set on the server' } }, 503)
     );
     const { onError, onDone } = run(streamOpenAiResponse);
-    await settle();
+    await until(() => expect(onError).toHaveBeenCalled());
 
     const err = onError.mock.calls[0][0] as AppError;
     expect(err.code).toBe('AUTH_MISSING');
@@ -94,7 +97,7 @@ describe('OpenAI service', () => {
   it('reports a rejected key', async () => {
     mockFetch().mockResolvedValue(jsonResponse({ error: { message: 'Incorrect API key provided' } }, 401));
     const { onError } = run(streamOpenAiResponse);
-    await settle();
+    await until(() => expect(onError).toHaveBeenCalled());
     expect((onError.mock.calls[0][0] as AppError).code).toBe('AUTH_INVALID');
   });
 
@@ -105,13 +108,11 @@ describe('OpenAI service', () => {
       return openStreamResponse(init?.signal, openAiChunk('first'));
     });
     const { onChunk, onDone, onError, cancel } = run(streamOpenAiResponse);
-    await settle();
-    expect(onChunk).toHaveBeenCalledWith('first');
+    await until(() => expect(onChunk).toHaveBeenCalledWith('first'));
 
     cancel();
+    await until(() => expect(signal?.aborted).toBe(true));
     await settle();
-
-    expect(signal?.aborted).toBe(true);
     expect(onDone).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });
@@ -121,7 +122,7 @@ describe('Claude service', () => {
   it('streams through our proxy and sends the system prompt', async () => {
     const fetchMock = mockFetch().mockResolvedValue(sseResponse(claudeEvents('Hello')));
     const { onChunk, onDone, onError } = run(streamClaudeResponse, 'Be brief');
-    await settle();
+    await until(() => expect(onDone).toHaveBeenCalled());
 
     expect(onChunk).toHaveBeenCalledWith('Hello');
     expect(onDone).toHaveBeenCalledTimes(1);
@@ -144,7 +145,7 @@ describe('Claude service', () => {
       jsonResponse({ type: 'error', error: { type: 'not_configured', message: 'ANTHROPIC_API_KEY is not set on the server' } }, 503)
     );
     const { onError } = run(streamClaudeResponse);
-    await settle();
+    await until(() => expect(onError).toHaveBeenCalled());
 
     const err = onError.mock.calls[0][0] as AppError;
     expect(err.code).toBe('AUTH_MISSING');
@@ -158,12 +159,12 @@ describe('Claude service', () => {
       return openStreamResponse(init?.signal, claudeEvents('partial').slice(0, 3).join(''));
     });
     const { onDone, onError, cancel } = run(streamClaudeResponse);
-    await settle();
+    await until(() => expect(signal).toBeDefined());
 
     cancel();
+    await until(() => expect(signal?.aborted).toBe(true));
     await settle();
 
-    expect(signal?.aborted).toBe(true);
     expect(onDone).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });
