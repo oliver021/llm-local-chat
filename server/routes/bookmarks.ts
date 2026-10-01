@@ -1,18 +1,8 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import db from '../db.js';
+import { Router } from 'express';
+import { z } from 'zod';
 import type { Bookmark } from '../../types.js';
-
-const router = Router();
-
-type Handler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
-function wrap(fn: Handler): Handler {
-  return (req, res, next) => {
-    try {
-      const r = fn(req, res, next);
-      if (r instanceof Promise) r.catch(next);
-    } catch (err) { next(err); }
-  };
-}
+import type { Db } from '../db.js';
+import { HttpError, parseBody, wrap } from '../http.js';
 
 interface BookmarkRow {
   id: string;
@@ -22,6 +12,20 @@ interface BookmarkRow {
   note: string | null;
   created_at: number;
 }
+
+const createBookmarkSchema = z.object({
+  id: z.string().min(1).max(200),
+  messageId: z.string().min(1).max(200),
+  chatId: z.string().min(1).max(200),
+  title: z.string().max(500),
+  note: z.string().max(5000).nullish(),
+  createdAt: z.number().int().nonnegative(),
+});
+
+const updateBookmarkSchema = z.object({
+  title: z.string().max(500).optional(),
+  note: z.string().max(5000).nullish(),
+});
 
 function toBookmark(row: BookmarkRow): Bookmark {
   return {
@@ -34,50 +38,77 @@ function toBookmark(row: BookmarkRow): Bookmark {
   };
 }
 
-// GET /api/bookmarks — all bookmarks
-router.get('/', wrap((_req: Request, res: Response) => {
-  const rows = db
-    .prepare('SELECT * FROM bookmarks ORDER BY created_at DESC')
-    .all() as BookmarkRow[];
-  res.json(rows.map(toBookmark));
-}));
+export function createBookmarksRouter(db: Db): Router {
+  const router = Router();
 
-// GET /api/bookmarks/:id — single bookmark
-router.get('/:id', wrap((req: Request, res: Response) => {
-  const row = db
-    .prepare('SELECT * FROM bookmarks WHERE id = ?')
-    .get(req.params.id) as BookmarkRow | undefined;
-  if (!row) { res.status(404).json({ error: 'not found' }); return; }
-  res.json(toBookmark(row));
-}));
+  // GET /api/bookmarks — all bookmarks, newest first
+  router.get(
+    '/',
+    wrap((_req, res) => {
+      const rows = db
+        .prepare('SELECT * FROM bookmarks ORDER BY created_at DESC')
+        .all() as BookmarkRow[];
+      res.json(rows.map(toBookmark));
+    })
+  );
 
-// POST /api/bookmarks — create bookmark
-router.post('/', wrap((req: Request, res: Response) => {
-  const { id, messageId, chatId, title, note, createdAt } = req.body as Bookmark;
-  db.prepare(
-    `INSERT INTO bookmarks (id, message_id, chat_id, title, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, messageId, chatId, title, note ?? null, createdAt);
-  res.status(201).json({ id });
-}));
+  // GET /api/bookmarks/:id
+  router.get(
+    '/:id',
+    wrap((req, res) => {
+      const row = db.prepare('SELECT * FROM bookmarks WHERE id = ?').get(req.params.id) as
+        | BookmarkRow
+        | undefined;
+      if (!row) throw new HttpError(404, 'Bookmark not found', 'not_found');
+      res.json(toBookmark(row));
+    })
+  );
 
-// PATCH /api/bookmarks/:id — update title/note
-router.patch('/:id', wrap((req: Request, res: Response) => {
-  const { title, note } = req.body as Partial<Bookmark>;
-  const sets: string[] = [];
-  const vals: unknown[] = [];
-  if (title !== undefined) { sets.push('title = ?'); vals.push(title); }
-  if (note !== undefined) { sets.push('note = ?'); vals.push(note ?? null); }
-  if (!sets.length) { res.status(400).json({ error: 'nothing to update' }); return; }
-  vals.push(req.params.id);
-  db.prepare(`UPDATE bookmarks SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
-  res.json({ ok: true });
-}));
+  // POST /api/bookmarks
+  router.post(
+    '/',
+    wrap((req, res) => {
+      const body = parseBody(createBookmarkSchema, req.body);
+      db.prepare(
+        `INSERT INTO bookmarks (id, message_id, chat_id, title, note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(body.id, body.messageId, body.chatId, body.title, body.note ?? null, body.createdAt);
+      res.status(201).json({ id: body.id });
+    })
+  );
 
-// DELETE /api/bookmarks/:id — delete bookmark
-router.delete('/:id', wrap((req: Request, res: Response) => {
-  db.prepare('DELETE FROM bookmarks WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
-}));
+  // PATCH /api/bookmarks/:id — update title and/or note
+  router.patch(
+    '/:id',
+    wrap((req, res) => {
+      const body = parseBody(updateBookmarkSchema, req.body);
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      if (body.title !== undefined) {
+        sets.push('title = ?');
+        values.push(body.title);
+      }
+      if (body.note !== undefined) {
+        sets.push('note = ?');
+        values.push(body.note);
+      }
+      if (sets.length === 0) throw new HttpError(400, 'Nothing to update', 'invalid_request');
+      const result = db
+        .prepare(`UPDATE bookmarks SET ${sets.join(', ')} WHERE id = ?`)
+        .run(...values, req.params.id);
+      if (result.changes === 0) throw new HttpError(404, 'Bookmark not found', 'not_found');
+      res.json({ ok: true });
+    })
+  );
 
-export default router;
+  // DELETE /api/bookmarks/:id
+  router.delete(
+    '/:id',
+    wrap((req, res) => {
+      db.prepare('DELETE FROM bookmarks WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
+    })
+  );
+
+  return router;
+}

@@ -1,35 +1,86 @@
-import express, { NextFunction, Request, Response } from 'express';
-import cors from 'cors';
-import chatsRouter from './routes/chats.js';
-import bookmarksRouter from './routes/bookmarks.js';
+import path from 'node:path';
+import type { Server } from 'node:http';
+import { createApp } from './app.js';
+import { ConfigError, isLoopback, loadConfig } from './config.js';
+import { openDatabase } from './db.js';
+import { loadEnvFiles } from './env.js';
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const SHUTDOWN_GRACE_MS = 5000;
 
-app.use('/api/chats', chatsRouter);
-app.use('/api/bookmarks', bookmarksRouter);
+function main(): void {
+  const envFiles = loadEnvFiles();
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+  let config;
+  try {
+    config = loadConfig();
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      console.error(`Configuration error: ${err.message}`);
+      process.exit(1);
+    }
+    throw err;
+  }
 
-// 404 — no route matched
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: 'not_found', message: 'Route not found' });
-});
+  const dbFile = path.join(config.dataDir, 'chat.db');
+  let db;
+  try {
+    db = openDatabase(dbFile);
+  } catch (err) {
+    console.error(`Could not open the database at ${dbFile}:`, err);
+    process.exit(1);
+  }
 
-// Global error handler — must have 4 params so Express recognises it as error middleware
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  const message = err instanceof Error ? err.message : 'Internal server error';
-  const status = (err as { status?: number })?.status ?? 500;
-  console.error('[express]', err);
-  res.status(status).json({ error: 'server_error', message });
-});
+  const app = createApp({ config, db });
 
-process.on('uncaughtException', (err) => {
-  console.error('[fatal] Uncaught exception:', err);
-});
+  const server: Server = app.listen(config.port, config.host, () => {
+    const configured = (key?: string) => (key ? 'API key set' : 'no API key');
+    console.log(`Server listening on http://${config.host}:${config.port}`);
+    console.log(`  env files:  ${envFiles.join(', ') || 'none (using process environment)'}`);
+    console.log(`  database:   ${dbFile}`);
+    console.log(`  llama.cpp:  ${config.llamaServerUrl}`);
+    console.log(`  ollama:     ${config.ollamaUrl}`);
+    console.log(`  openai:     ${configured(config.openai.apiKey)} (${config.openai.baseUrl})`);
+    console.log(`  anthropic:  ${configured(config.anthropic.apiKey)} (${config.anthropic.baseUrl})`);
+    console.log(`  auth:       ${config.auth ? `basic auth enabled (user "${config.auth.user}")` : 'disabled'}`);
 
-const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`API server → http://localhost:${PORT}`);
-});
+    const hasKeys = Boolean(config.openai.apiKey || config.anthropic.apiKey);
+    if (!isLoopback(config.host) && !config.auth) {
+      console.warn(
+        '\nWARNING: the server is reachable from other machines and AUTH_PASSWORD is not set.' +
+          (hasKeys ? '\n         Anyone who can reach it can spend your provider API credits.' : '') +
+          '\n         Set AUTH_PASSWORD, or bind to 127.0.0.1 and put a reverse proxy in front.\n'
+      );
+    }
+  });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${config.port} is already in use. Set PORT to something else.`);
+    } else {
+      console.error('Server error:', err);
+    }
+    process.exit(1);
+  });
+
+  // Graceful shutdown: stop accepting connections, give in-flight streams a
+  // moment to finish, then close the database. `docker stop` sends SIGTERM.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n${signal} received, shutting down…`);
+
+    server.close(() => {
+      db.close();
+      process.exit(0);
+    });
+    server.closeIdleConnections();
+    setTimeout(() => {
+      server.closeAllConnections();
+    }, SHUTDOWN_GRACE_MS).unref();
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+main();

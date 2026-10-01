@@ -4,15 +4,31 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: 'jsdom',
     globals: true,
-    setupFiles: ['./tests/setup.ts'],
-    include: ['tests/**/*.test.{ts,tsx}'],
-    exclude: ['e2e/**', 'node_modules/**'],
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**', 'dist-server/**'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'client',
+          environment: 'jsdom',
+          include: ['tests/client/**/*.test.{ts,tsx}'],
+          setupFiles: ['./tests/setup.client.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'server',
+          environment: 'node',
+          include: ['tests/server/**/*.test.ts'],
+        },
+      },
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      include: ['utils/**', 'hooks/**', 'services/**', 'components/**'],
+      include: ['server/**', 'utils/**', 'hooks/**', 'services/**', 'components/**'],
       exclude: ['**/*.test.*', 'tests/**'],
     },
   },

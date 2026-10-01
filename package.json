@@ -17,12 +17,14 @@
     "dev": "vite",
     "dev:server": "tsx watch server/index.ts",
     "dev:all": "concurrently -n vite,api -c cyan,green \"npm run dev\" \"npm run dev:server\"",
-    "build": "vite build",
-    "preview": "vite preview",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.build.json",
+    "start": "node dist-server/server/index.js",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit && tsc -p tsconfig.server.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -43,7 +45,8 @@
     "react-dom": "^19.2.5",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
-    "sonner": "^2.0.7"
+    "sonner": "^2.0.7",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
