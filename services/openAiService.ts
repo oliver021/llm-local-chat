@@ -1,18 +1,23 @@
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { OPENAI_PROXY_PATH, proxyBaseUrl, toProviderError } from './providerErrors';
 
-// Lazy-initialise so nothing runs on import.
+// Created on first use. The SDK is loaded lazily too: most people run local
+// models and never need it, so it stays out of the initial bundle.
 let _client: OpenAI | null = null;
 
-function getClient(): OpenAI {
+async function getClient(): Promise<OpenAI> {
   if (!_client) {
-    _client = new OpenAI({
+    const { default: OpenAIClient } = await import('openai');
+    _client = new OpenAIClient({
       // The real API key lives on the server, which adds it to proxied requests.
       // The SDK just insists on a non-empty value.
       apiKey: 'managed-by-server',
       baseURL: proxyBaseUrl(OPENAI_PROXY_PATH),
       // Normally this flag exists to warn about secrets in the browser; there is none here.
       dangerouslyAllowBrowser: true,
+      // The SDK retries 5xx responses with a delay. Our proxy answers 502/503/504 for
+      // problems retrying cannot fix (key missing, upstream down), so show them at once.
+      maxRetries: 0,
     });
   }
   return _client;
@@ -35,7 +40,8 @@ export function streamOpenAiResponse(
 
   (async () => {
     try {
-      const stream = await getClient().chat.completions.create(
+      const client = await getClient();
+      const stream = await client.chat.completions.create(
         { model, stream: true, messages: allMessages },
         { signal: controller.signal }
       );

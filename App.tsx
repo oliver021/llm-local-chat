@@ -1,13 +1,9 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { Suspense, lazy, useCallback, useRef, useState, useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { ChatArea } from './components/ChatArea';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { SettingsModal } from './components/Settings';
-import { ModelSelectorModal } from './components/ModelSelectorModal';
-import { ArchivedChatsPage } from './components/ArchivedChatsPage';
-import { BookmarksPage } from './components/BookmarksPage';
 import { ChatActionsProvider } from './context/ChatContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { useTheme } from './hooks/useTheme';
@@ -18,6 +14,12 @@ import { useSettings } from './hooks/useSettings';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { dbCreateBookmark } from './utils/bookmarkApi';
 import { toast } from 'sonner';
+
+// Dialogs are not needed for the first paint, so they load in the background.
+const SettingsModal = lazy(() => import('./components/Settings').then(m => ({ default: m.SettingsModal })));
+const ModelSelectorModal = lazy(() => import('./components/ModelSelectorModal').then(m => ({ default: m.ModelSelectorModal })));
+const ArchivedChatsPage = lazy(() => import('./components/ArchivedChatsPage').then(m => ({ default: m.ArchivedChatsPage })));
+const BookmarksPage = lazy(() => import('./components/BookmarksPage').then(m => ({ default: m.BookmarksPage })));
 
 interface MessageEventDetail {
   messageId: string;
@@ -202,32 +204,25 @@ const App: React.FC = () => {
         </main>
 
         <ErrorBoundary>
-          <SettingsModal isOpen={settingsOpen} onClose={closeSettings} />
-        </ErrorBoundary>
-
-        <ErrorBoundary>
-          <ModelSelectorModal
-            isOpen={modelSelectorOpen}
-            onClose={closeModelSelector}
-            activeProvider={activeProvider}
-            activeModel={activeModel}
-            onSelect={setProviderAndModel}
-          />
-        </ErrorBoundary>
-
-        <ErrorBoundary>
-          <ArchivedChatsPage
-            isOpen={archivedOpen}
-            onClose={() => setArchivedOpen(false)}
-            onRestored={() => window.location.reload()}
-          />
-        </ErrorBoundary>
-
-        <ErrorBoundary>
-          <BookmarksPage
-            isOpen={bookmarksOpen}
-            onClose={() => setBookmarksOpen(false)}
-          />
+          <Suspense fallback={null}>
+            <SettingsModal isOpen={settingsOpen} onClose={closeSettings} />
+            <ModelSelectorModal
+              isOpen={modelSelectorOpen}
+              onClose={closeModelSelector}
+              activeProvider={activeProvider}
+              activeModel={activeModel}
+              onSelect={setProviderAndModel}
+            />
+            <ArchivedChatsPage
+              isOpen={archivedOpen}
+              onClose={() => setArchivedOpen(false)}
+              onRestored={() => window.location.reload()}
+            />
+            <BookmarksPage
+              isOpen={bookmarksOpen}
+              onClose={() => setBookmarksOpen(false)}
+            />
+          </Suspense>
         </ErrorBoundary>
 
         {/* Copy chat dialog */}
