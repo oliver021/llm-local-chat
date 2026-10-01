@@ -1,4 +1,5 @@
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
+import type { CopyChatOptions } from '../types';
 
 /**
  * ChatActionsContext — the single nerve centre for every user-initiated mutation in the app.
@@ -96,7 +97,7 @@ interface ChatActionsContextValue {
   handleTogglePin: (id: string) => void;
   handleDeleteChat: (id: string) => void;
   handleArchiveChat: (id: string) => void;
-  handleCopyChat: (id: string) => void;
+  handleCopyChat: (id: string, options?: CopyChatOptions) => void;
   handleRenameChat: (id: string, newTitle: string) => void;
   handleStopStreaming: () => void;
 

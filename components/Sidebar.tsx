@@ -111,6 +111,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onTogglePin={onTogglePin}
                       onDeleteChat={onDeleteChat}
                       onArchiveChat={onArchiveChat}
+                      onCopyChat={onCopyChat}
                       onRenameChat={onRenameChat}
                     />
                   </li>

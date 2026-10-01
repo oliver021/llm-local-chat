@@ -1,4 +1,5 @@
-import type { ProviderKey, ConnectionStatus } from '../../../hooks/useProvider';
+import type { ProviderKey } from '../../../hooks/useProvider';
+import type { ConnectionStatus } from '../../../services/modelDiscovery';
 
 export function ProviderHint({ provider, status }: { provider: ProviderKey; status?: ConnectionStatus }) {
   const msgs: Partial<Record<ProviderKey, Record<string, string>>> = {

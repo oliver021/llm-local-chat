@@ -1,5 +1,6 @@
 import { CheckCircle2 } from '../Icons';
-import type { ModelInfo, ProviderKey } from '../../services/modelDiscovery';
+import type { ModelInfo } from '../../services/modelDiscovery';
+import type { ProviderKey } from '../../hooks/useProvider';
 
 interface ModelListProps {
   models: ModelInfo[]; activeProvider: ProviderKey; activeModel: string;

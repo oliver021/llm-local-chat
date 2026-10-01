@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { AppError, ChatSession, Message } from '../types';
+import { AppError, ChatSession, CopyChatOptions, Message } from '../types';
 import { getStreamFn } from '../services/providerDispatch';
 import type { ProviderKey } from './useProvider';
 import { drainLegacyChats, clearAllStorage } from '../utils/storage';
@@ -30,7 +30,7 @@ interface UseChatsResult {
   handleDeleteChat: (id: string) => void;
   handleArchiveChat: (id: string) => void;
   handleRenameChat: (id: string, newTitle: string) => void;
-  handleCopyChat: (id: string) => void;
+  handleCopyChat: (id: string, options?: CopyChatOptions) => void;
   handleStopStreaming: () => void;
   handleSendMessage: (content: string) => void;
   handleCopyMessage: (messageId: string) => void;
@@ -175,21 +175,34 @@ export function useChats(
     toast.success('Conversation archived');
   }, []);
 
-  const handleCopyChat = useCallback((id: string) => {
-    const chat = chats.find(c => c.id === id);
+  const handleCopyChat = useCallback((id: string, options: CopyChatOptions = {}) => {
+    const chat = chatsRef.current.find(c => c.id === id);
     if (!chat) return;
-    const newId = `chat-${Date.now()}`;
+
+    let source = chat.messages.filter(m => !m.isStreaming);
+    if (options.upToMessageId) {
+      const idx = source.findIndex(m => m.id === options.upToMessageId);
+      if (idx === -1) return;
+      source = source.slice(0, idx + 1);
+    }
+
+    cancelActiveStream();
+    const now = Date.now();
+    const newId = `chat-${now}`;
+    // Message ids are primary keys in the database, so the copy needs fresh ones.
+    const messages = source.map((m, i) => ({ ...m, id: `msg-${now}-${i}` }));
     const newChat: ChatSession = {
       id: newId,
-      title: `${chat.title} (Copy)`,
+      title: options.title?.trim() || `${chat.title} (Copy)`,
       isPinned: false,
-      updatedAt: Date.now(),
-      messages: chat.messages.map(m => ({ ...m })),
+      updatedAt: now,
+      messages,
     };
     setChats(prev => [newChat, ...prev]);
     setActiveChatId(newId);
-    db(dbCopyChat(id, newId, newChat.title, chat.messages), 'copy chat');
-  }, [chats]);
+    db(dbCopyChat(newId, newChat.title, messages), 'copy chat');
+    toast.success(options.upToMessageId ? 'Branched into a new chat' : 'Chat copied');
+  }, [cancelActiveStream]);
 
   const handleRenameChat = useCallback((id: string, newTitle: string) => {
     const trimmed = newTitle.trim();

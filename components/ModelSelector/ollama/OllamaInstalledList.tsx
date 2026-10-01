@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, CheckCircle2, Cpu } from '../../Icons';
+import { RefreshCw, CheckCircle2 } from '../../Icons';
 import { fetchOllamaInstalledModels } from '../../../services/modelDiscovery';
 import { Spinner } from '../shared/Spinner';
 import { ErrorState } from '../shared/ErrorState';

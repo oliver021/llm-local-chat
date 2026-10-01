@@ -14,7 +14,7 @@ interface ChatAreaProps {
   chat: ChatSession | null;
   isTyping?: boolean;
   // Forwarded ref so the global "/" shortcut can focus the input from App.tsx
-  inputRef?: React.RefObject<HTMLTextAreaElement>;
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({ chat, isTyping, inputRef }) => {

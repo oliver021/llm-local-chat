@@ -3,7 +3,8 @@ import { Cpu, RefreshCw, CheckCircle2 } from '../Icons';
 import { fetchLlamaServerModels } from '../../services/modelDiscovery';
 import { Spinner } from './shared/Spinner';
 import { ErrorState } from './shared/ErrorState';
-import type { ModelInfo, ProviderKey } from '../../services/modelDiscovery';
+import type { ModelInfo } from '../../services/modelDiscovery';
+import type { ProviderKey } from '../../hooks/useProvider';
 
 export function LocalModels({ activeProvider, activeModel, onSelect }: {
   activeProvider: ProviderKey; activeModel: string; onSelect: (m: ModelInfo) => void;

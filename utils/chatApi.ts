@@ -87,7 +87,7 @@ export function dbGetArchivedChats(): Promise<ChatSession[]> {
   return req<ChatSession[]>(`${BASE}/archived`);
 }
 
-export async function dbCopyChat(chatId: string, newId: string, newTitle: string, messages: any[]): Promise<void> {
+export async function dbCopyChat(newId: string, newTitle: string, messages: Message[]): Promise<void> {
   await dbCreateChat({
     id: newId,
     title: newTitle,

@@ -8,7 +8,7 @@ const INPUT_WARN_THRESHOLD = 3500;
 interface ChatInputProps {
   isCentered?: boolean;
   // Optional ref forwarded from App so the "/" shortcut can focus the input
-  inputRef?: React.RefObject<HTMLTextAreaElement>;
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   // Whether an AI response is currently streaming (disables send)
   isStreaming?: boolean;
 }
@@ -19,7 +19,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputR
 
   // Use the forwarded ref if provided, otherwise create a local one
   const localRef = useRef<HTMLTextAreaElement>(null);
-  const textareaRef = (inputRef ?? localRef) as React.RefObject<HTMLTextAreaElement>;
+  const textareaRef = inputRef ?? localRef;
 
   const handleSend = () => {
     if (input.trim()) {
