@@ -24,6 +24,20 @@ async function waitForReplyToFinish(page: Page) {
   await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
 }
 
+/**
+ * Wait until the server has stored `count` messages for the chat called `title`.
+ * The UI updates as soon as a reply ends, but the save is a separate request; reloading
+ * before it lands aborts it and the reply is gone, which is flaky on a slow machine.
+ */
+async function waitForSaved(page: Page, title: string, count: number) {
+  await expect
+    .poll(async () => {
+      const chats = await (await page.request.get('/api/chats')).json();
+      return chats.find((c: { title: string }) => c.title === title)?.messages.length;
+    })
+    .toBe(count);
+}
+
 /** A chat entry in the sidebar. */
 const sidebarChat = (page: Page, title: string) =>
   page.getByRole('listitem').filter({ hasText: title }).first();
@@ -57,6 +71,7 @@ test('sends a message, streams the reply, and keeps the chat after a reload', as
 
   await expect(page.getByText('Mock reply. You said: "Hello from Playwright"')).toBeVisible();
   await waitForReplyToFinish(page);
+  await waitForSaved(page, 'Hello from Playwright', 2);
 
   await page.reload();
   await sidebarChat(page, 'Hello from Playwright').click();
@@ -67,6 +82,7 @@ test('reloading in the middle of a reply does not save a bogus error as the answ
   await page.goto('/');
   await send(page, 'tell me everything [long]');
   await expect(page.getByText(/word3\b/)).toBeVisible();
+  await waitForSaved(page, 'tell me everything [long]', 1); // the question; the reply is unfinished
 
   await page.reload();
   await sidebarChat(page, 'tell me everything').click();
@@ -111,12 +127,7 @@ test('copying a chat creates a second, persisted chat', async ({ page }) => {
   await expect(page.getByText('My duplicate').first()).toBeVisible();
 
   // The copy is written message by message; wait until the server has all of it.
-  await expect
-    .poll(async () => {
-      const chats = await (await page.request.get('/api/chats')).json();
-      return chats.find((c: { title: string }) => c.title === 'My duplicate')?.messages.length;
-    })
-    .toBe(2);
+  await waitForSaved(page, 'My duplicate', 2);
 
   await page.reload();
   await expect(sidebarChat(page, 'My duplicate')).toBeVisible();
