@@ -59,7 +59,7 @@ docker compose exec ollama ollama pull llama3.2
 
 ### With Node
 
-Requires Node.js 20.12 or newer (22 recommended, see `.nvmrc`).
+Requires Node.js 20.19 or newer (22 recommended, see `.nvmrc`).
 
 ```bash
 git clone https://github.com/oliver021/llm-local-chat.git
@@ -215,7 +215,7 @@ missing, such as `Set OPENAI_API_KEY in .env and restart the server.`
 **`EADDRINUSE`** — something else uses the port. Set `PORT` (or `APP_PORT` for compose).
 
 **`npm ci` fails building `better-sqlite3`** — it normally downloads a prebuilt binary. Use a supported
-Node version (20.12+), or install a C++ toolchain (`build-essential` and `python3` on Debian/Ubuntu).
+Node version (20.19+), or install a C++ toolchain (`build-essential` and `python3` on Debian/Ubuntu).
 
 ## License
 
