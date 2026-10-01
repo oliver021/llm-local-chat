@@ -1,12 +1,17 @@
 import OpenAI from 'openai';
+import { OPENAI_PROXY_PATH, proxyBaseUrl, toProviderError } from './providerErrors';
 
-// Lazy-initialise so a missing key doesn't crash on import
+// Lazy-initialise so nothing runs on import.
 let _client: OpenAI | null = null;
 
 function getClient(): OpenAI {
   if (!_client) {
     _client = new OpenAI({
-      apiKey: import.meta.env.VITE_OPENAI_API_KEY ?? '',
+      // The real API key lives on the server, which adds it to proxied requests.
+      // The SDK just insists on a non-empty value.
+      apiKey: 'managed-by-server',
+      baseURL: proxyBaseUrl(OPENAI_PROXY_PATH),
+      // Normally this flag exists to warn about secrets in the browser; there is none here.
       dangerouslyAllowBrowser: true,
     });
   }
@@ -21,6 +26,7 @@ export function streamOpenAiResponse(
   onError: (err: Error) => void,
   systemPrompt?: string
 ): () => void {
+  const controller = new AbortController();
   let cancelled = false;
 
   const allMessages = systemPrompt
@@ -29,15 +35,10 @@ export function streamOpenAiResponse(
 
   (async () => {
     try {
-      if (!import.meta.env.VITE_OPENAI_API_KEY) {
-        throw new Error('VITE_OPENAI_API_KEY is not set. Add it to .env.local');
-      }
-
-      const stream = await getClient().chat.completions.create({
-        model,
-        stream: true,
-        messages: allMessages,
-      });
+      const stream = await getClient().chat.completions.create(
+        { model, stream: true, messages: allMessages },
+        { signal: controller.signal }
+      );
 
       for await (const chunk of stream) {
         if (cancelled) break;
@@ -47,9 +48,13 @@ export function streamOpenAiResponse(
 
       if (!cancelled) onDone();
     } catch (err) {
-      if (!cancelled) onError(err instanceof Error ? err : new Error(String(err)));
+      if (!cancelled) onError(toProviderError('OpenAI', err));
     }
   })();
 
-  return () => { cancelled = true; };
+  // Aborting closes the connection, which makes the server cancel the upstream request.
+  return () => {
+    cancelled = true;
+    controller.abort();
+  };
 }

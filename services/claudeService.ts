@@ -1,11 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { ANTHROPIC_PROXY_PATH, proxyBaseUrl, toProviderError } from './providerErrors';
 
 let _client: Anthropic | null = null;
 
 function getClient(): Anthropic {
   if (!_client) {
     _client = new Anthropic({
-      apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY ?? '',
+      // The real API key lives on the server, which adds it to proxied requests.
+      // The SDK just insists on a non-empty value.
+      apiKey: 'managed-by-server',
+      baseURL: proxyBaseUrl(ANTHROPIC_PROXY_PATH),
+      // Normally this flag exists to warn about secrets in the browser; there is none here.
       dangerouslyAllowBrowser: true,
     });
   }
@@ -20,20 +25,20 @@ export function streamClaudeResponse(
   onError: (err: Error) => void,
   systemPrompt?: string
 ): () => void {
+  const controller = new AbortController();
   let cancelled = false;
 
   (async () => {
     try {
-      if (!import.meta.env.VITE_ANTHROPIC_API_KEY) {
-        throw new Error('VITE_ANTHROPIC_API_KEY is not set. Add it to .env.local');
-      }
-
-      const stream = getClient().messages.stream({
-        model,
-        max_tokens: 2048,
-        messages,
-        ...(systemPrompt ? { system: systemPrompt } : {}),
-      });
+      const stream = getClient().messages.stream(
+        {
+          model,
+          max_tokens: 2048,
+          messages,
+          ...(systemPrompt ? { system: systemPrompt } : {}),
+        },
+        { signal: controller.signal }
+      );
 
       stream.on('text', (text) => {
         if (!cancelled) onChunk(text);
@@ -42,9 +47,13 @@ export function streamClaudeResponse(
       await stream.finalMessage();
       if (!cancelled) onDone();
     } catch (err) {
-      if (!cancelled) onError(err instanceof Error ? err : new Error(String(err)));
+      if (!cancelled) onError(toProviderError('Anthropic', err));
     }
   })();
 
-  return () => { cancelled = true; };
+  // Aborting closes the connection, which makes the server cancel the upstream request.
+  return () => {
+    cancelled = true;
+    controller.abort();
+  };
 }
