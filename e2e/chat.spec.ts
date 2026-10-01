@@ -78,6 +78,21 @@ test('sends a message, streams the reply, and keeps the chat after a reload', as
   await expect(page.getByText('Mock reply. You said: "Hello from Playwright"')).toBeVisible();
 });
 
+test('saves the whole reply when the model sends everything in one burst', async ({ page }) => {
+  // Real models often deliver the last tokens and the end of the stream together.
+  await page.goto('/');
+  await send(page, '[burst] all at once');
+
+  const reply = page.getByText('Mock reply. You said: "[burst] all at once"');
+  await expect(reply).toBeVisible();
+  await waitForReplyToFinish(page);
+  await waitForSaved(page, '[burst] all at once', 2);
+
+  await page.reload();
+  await sidebarChat(page, '[burst] all at once').click();
+  await expect(reply).toBeVisible();
+});
+
 test('reloading in the middle of a reply does not save a bogus error as the answer', async ({ page }) => {
   await page.goto('/');
   await send(page, 'tell me everything [long]');

@@ -18,6 +18,15 @@ import {
   dbCopyChat,
 } from '../utils/chatApi';
 
+interface StreamingReply {
+  chatId: string;
+  messageId: string;
+  /** Timestamp of the placeholder message, kept so the saved reply sorts where it appeared. */
+  timestamp: number;
+  /** Everything received so far. */
+  content: string;
+}
+
 interface UseChatsResult {
   chats: ChatSession[];
   activeChatId: string | null;
@@ -76,8 +85,11 @@ export function useChats(
   const chatsRef = useRef<ChatSession[]>([]);
   useEffect(() => { chatsRef.current = chats; }, [chats]);
 
-  // Tracks the chat+message currently being streamed so we can persist on stop/error.
-  const streamingCtxRef = useRef<{ chatId: string; messageId: string } | null>(null);
+  // The reply being streamed right now. Its text is accumulated here, not read back from
+  // React state: state only catches up after a render, so when the last tokens and the end
+  // of the stream arrive in one network read (normal with a real model), reading it back
+  // would drop the tail of the reply from what gets saved.
+  const streamingCtxRef = useRef<StreamingReply | null>(null);
 
   // ── Boot: load from DB, migrate legacy localStorage chats ─────────────────
 
@@ -230,14 +242,15 @@ export function useChats(
     cancelStreamRef.current = null;
     setIsTyping(false);
 
-    // Persist partial AI message content before clearing isStreaming
+    // Persist the partial AI reply before clearing isStreaming
     const ctx = streamingCtxRef.current;
     if (ctx) {
-      const chat = chatsRef.current.find(c => c.id === ctx.chatId);
-      const msg = chat?.messages.find(m => m.id === ctx.messageId);
-      if (msg) {
-        db(dbAddMessage(ctx.chatId, { ...msg, isStreaming: undefined }), 'save partial message');
-      }
+      db(dbAddMessage(ctx.chatId, {
+        id: ctx.messageId,
+        role: 'ai',
+        content: ctx.content,
+        timestamp: ctx.timestamp,
+      }), 'save partial message');
       streamingCtxRef.current = null;
     }
 
@@ -318,7 +331,13 @@ export function useChats(
         )
       );
 
-      streamingCtxRef.current = { chatId: currentChatId, messageId: aiMessageId };
+      const reply: StreamingReply = {
+        chatId: currentChatId,
+        messageId: aiMessageId,
+        timestamp: placeholder.timestamp,
+        content: '',
+      };
+      streamingCtxRef.current = reply;
 
       const currentMessages = chatsRef.current.find(c => c.id === currentChatId)?.messages ?? [];
       const history = [
@@ -332,6 +351,7 @@ export function useChats(
       const cancel = getStreamFn(activeProvider, activeModel)(
         history,
         (token) => {
+          reply.content += token;
           setIsTyping(false);
           setChats(prev =>
             prev.map(chat => {
@@ -363,18 +383,14 @@ export function useChats(
             })
           );
           // Persist complete AI message and update session timestamp
-          const finalContent =
-            chatsRef.current
-              .find(c => c.id === currentChatId)
-              ?.messages.find(m => m.id === aiMessageId)?.content ?? '';
           db(dbAddMessage(currentChatId, {
             id: aiMessageId,
             role: 'ai',
-            content: finalContent,
+            content: reply.content,
             timestamp: placeholder.timestamp,
           }), 'save ai message');
           db(dbUpdateChat(currentChatId, { updatedAt: now }), 'update chat timestamp');
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
@@ -401,7 +417,7 @@ export function useChats(
             timestamp: placeholder.timestamp,
           }), 'save error message');
           toast.error(appErr.userMessage ?? err.message);
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         systemPrompt
@@ -495,7 +511,13 @@ export function useChats(
         )
       );
 
-      streamingCtxRef.current = { chatId, messageId: newAiId };
+      const reply: StreamingReply = {
+        chatId,
+        messageId: newAiId,
+        timestamp: placeholder.timestamp,
+        content: '',
+      };
+      streamingCtxRef.current = reply;
 
       const history = (chatsRef.current.find(c => c.id === chatId)?.messages ?? [])
         .filter(m => m.id !== messageId)
@@ -507,6 +529,7 @@ export function useChats(
       const cancel = getStreamFn(activeProvider, activeModel)(
         history,
         (token) => {
+          reply.content += token;
           setChats(prev =>
             prev.map(chat => {
               if (chat.id !== chatId) return chat;
@@ -533,19 +556,15 @@ export function useChats(
               };
             })
           );
-          const finalContent =
-            chatsRef.current
-              .find(c => c.id === chatId)
-              ?.messages.find(m => m.id === newAiId)?.content ?? '';
           db(dbAddMessage(chatId, {
             id: newAiId,
             role: 'ai',
-            content: finalContent,
+            content: reply.content,
             timestamp: placeholder.timestamp,
           }), 'save regenerated message');
           db(dbUpdateChat(chatId, { updatedAt: now }), 'update chat timestamp');
           toast.success('Response regenerated', { id: toastId });
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         (err) => {
@@ -571,7 +590,7 @@ export function useChats(
             timestamp: placeholder.timestamp,
           }), 'save error message');
           toast.error(appErr.userMessage ?? err.message, { id: toastId });
-          streamingCtxRef.current = null;
+          if (streamingCtxRef.current === reply) streamingCtxRef.current = null;
           cancelStreamRef.current = null;
         },
         systemPrompt

@@ -10,6 +10,8 @@
  * It answers GET /v1/models and streams POST /v1/chat/completions as
  * server-sent events, one word at a time, echoing the last user message.
  * A message containing "[long]" gets a 300-word reply, handy for testing Stop.
+ * A message containing "[burst]" gets its whole reply, and the end of the stream, in a
+ * single network write, like a real model whose last tokens and [DONE] arrive together.
  * GET /__stats reports how many completions started and how many were cut off
  * by the client, so tests can check that Stop really cancels generation.
  */
@@ -68,6 +70,16 @@ const server = http.createServer(async (req, res) => {
       closed = true;
       if (!res.writableFinished) stats.aborted += 1;
     });
+
+    if (content.includes('[burst]')) {
+      const events = words.map((word, i) => {
+        const delta = { content: (i === 0 ? '' : ' ') + word };
+        return `data: ${JSON.stringify({ choices: [{ index: 0, delta }] })}\n\n`;
+      });
+      stats.completed += 1;
+      res.end(events.join('') + 'data: [DONE]\n\n');
+      return;
+    }
 
     for (const [i, word] of words.entries()) {
       if (closed) return;

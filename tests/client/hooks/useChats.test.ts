@@ -185,6 +185,57 @@ describe('sending a message', () => {
   });
 });
 
+describe('saving the reply text', () => {
+  // Regression: the text to save was read from React state, which only catches up after a
+  // render. When the last tokens and the end of the stream arrive in one network read (the
+  // normal case with a real model) the database got a reply without its last tokens, so
+  // the screen showed it complete and a reload did not.
+
+  it('saves the whole reply when the last tokens and the end of the stream arrive together', async () => {
+    const model = fakeModel();
+    const { result } = await loadHook(undefined, []);
+    act(() => result.current.handleSendMessage('hi'));
+    const chatId = result.current.chats[0].id;
+
+    act(() => {
+      model.calls[0].onChunk('Hel');
+      model.calls[0].onChunk('lo');
+      model.calls[0].onDone();
+    });
+
+    expect(api.dbAddMessage).toHaveBeenCalledWith(chatId, expect.objectContaining({ role: 'ai', content: 'Hello' }));
+    expect(result.current.chats[0].messages[1]).toMatchObject({ content: 'Hello', isStreaming: false });
+  });
+
+  it('does the same for a regenerated reply', async () => {
+    const model = fakeModel();
+    const { result } = await loadHook();
+    act(() => result.current.handleRegenerateMessage('chat-seed', 'a2'));
+
+    act(() => {
+      model.calls[0].onChunk('A better ');
+      model.calls[0].onChunk('answer');
+      model.calls[0].onDone();
+    });
+
+    expect(api.dbAddMessage).toHaveBeenCalledWith('chat-seed', expect.objectContaining({ role: 'ai', content: 'A better answer' }));
+  });
+
+  it('keeps every token received when Stop is pressed right after them', async () => {
+    const model = fakeModel();
+    const { result } = await loadHook(undefined, []);
+    act(() => result.current.handleSendMessage('write a poem'));
+    const chatId = result.current.chats[0].id;
+
+    act(() => {
+      model.calls[0].onChunk('Roses are');
+      result.current.handleStopStreaming();
+    });
+
+    expect(api.dbAddMessage).toHaveBeenCalledWith(chatId, expect.objectContaining({ role: 'ai', content: 'Roses are' }));
+  });
+});
+
 describe('copying and branching a chat', () => {
   it('copies every message under fresh ids (ids are primary keys in the database)', async () => {
     // Regression: copies reused the original ids, so the server rejected them.
