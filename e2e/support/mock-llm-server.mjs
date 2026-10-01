@@ -9,6 +9,9 @@
  *
  * It answers GET /v1/models and streams POST /v1/chat/completions as
  * server-sent events, one word at a time, echoing the last user message.
+ * A message containing "[long]" gets a 300-word reply, handy for testing Stop.
+ * GET /__stats reports how many completions started and how many were cut off
+ * by the client, so tests can check that Stop really cancels generation.
  */
 import http from 'node:http';
 
@@ -16,6 +19,8 @@ const port = Number(process.env.MOCK_LLM_PORT ?? 8080);
 const host = process.env.MOCK_LLM_HOST ?? '127.0.0.1';
 const delayMs = Number(process.env.MOCK_LLM_DELAY_MS ?? 40);
 const MODEL = 'mock-model.gguf';
+
+const stats = { started: 0, aborted: 0, completed: 0 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -34,6 +39,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && req.url === '/__stats') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(stats));
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/v1/chat/completions') {
     let payload = {};
     try {
@@ -45,12 +56,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     const lastUser = [...(payload.messages ?? [])].reverse().find((m) => m.role === 'user');
-    const reply = `Mock reply. You said: "${lastUser?.content ?? ''}"`;
-    const words = reply.split(' ');
+    const content = lastUser?.content ?? '';
+    const words = content.includes('[long]')
+      ? Array.from({ length: 300 }, (_, i) => `word${i + 1}`)
+      : `Mock reply. You said: "${content}"`.split(' ');
 
+    stats.started += 1;
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
     let closed = false;
-    res.on('close', () => (closed = true));
+    res.on('close', () => {
+      closed = true;
+      if (!res.writableFinished) stats.aborted += 1;
+    });
 
     for (const [i, word] of words.entries()) {
       if (closed) return;
@@ -58,7 +75,10 @@ const server = http.createServer(async (req, res) => {
       res.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta }] })}\n\n`);
       await sleep(delayMs);
     }
-    if (!closed) res.end('data: [DONE]\n\n');
+    if (!closed) {
+      stats.completed += 1;
+      res.end('data: [DONE]\n\n');
+    }
     return;
   }
 

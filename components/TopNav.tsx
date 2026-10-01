@@ -108,7 +108,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         {backendStatus === 'offline' && (
           <div
             className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0"
-            title="Backend unreachable — check if the API server is running on port 3001"
+            title="Backend unreachable — is the server running? (npm run dev:all, or docker compose up)"
             aria-label="Backend offline"
           />
         )}

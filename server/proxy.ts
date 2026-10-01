@@ -79,6 +79,14 @@ export function createProxy(options: ProxyOptions): RequestHandler {
   const maxBody = options.maxBodyBytes ?? 10 * 1024 * 1024;
   const headersTimeout = options.headersTimeoutMs ?? 120_000;
 
+  // The model selector polls every provider; do not flood the log when one is down.
+  let lastWarning = 0;
+  const warnOnce = (message: string) => {
+    if (Date.now() - lastWarning < 60_000) return;
+    lastWarning = Date.now();
+    console.warn(message);
+  };
+
   return async (req, res) => {
     if (!req.url.startsWith('/')) {
       sendError(res, 400, 'bad_request', 'Invalid path');
@@ -151,7 +159,7 @@ export function createProxy(options: ProxyOptions): RequestHandler {
       if (controller.signal.reason instanceof Error && controller.signal.reason.message === 'headers-timeout') {
         sendError(res, 504, 'upstream_timeout', `${options.name} did not respond within ${Math.round(headersTimeout / 1000)}s`);
       } else {
-        console.warn(`[proxy:${options.name}] ${req.method} ${upstreamPath} failed: ${describeNetworkError(err)}`);
+        warnOnce(`[proxy:${options.name}] ${req.method} ${upstreamPath} failed: ${describeNetworkError(err)}`);
         sendError(res, 502, 'upstream_unreachable', `Could not reach ${options.name} at ${target.origin}. Is it running?`);
       }
       return;
