@@ -42,7 +42,7 @@ async function req<T = { ok: boolean }>(
 
   try {
     return await res.json() as T;
-  } catch (err) {
+  } catch {
     const appErr = new Error(`Failed to parse response from ${url}`) as AppError;
     appErr.code = 'UNKNOWN';
     appErr.userFacing = false;

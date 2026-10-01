@@ -113,7 +113,8 @@ const App: React.FC = () => {
   }, []);
 
   const handleToggleSidebar = useCallback(() => {
-    sidebarOpen ? closeSidebar() : openSidebar();
+    if (sidebarOpen) closeSidebar();
+    else openSidebar();
   }, [sidebarOpen, closeSidebar, openSidebar]);
 
   useKeyboardShortcuts({

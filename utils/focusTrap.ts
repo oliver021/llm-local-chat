@@ -49,5 +49,5 @@ export function useFocusTrap(containerRef: React.RefObject<HTMLElement>) {
 
     container.addEventListener('keydown', handleKeyDown);
     return () => container.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [containerRef]);
 }

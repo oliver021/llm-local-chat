@@ -18,7 +18,6 @@ app.use((_req: Request, res: Response) => {
 });
 
 // Global error handler — must have 4 params so Express recognises it as error middleware
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : 'Internal server error';
   const status = (err as { status?: number })?.status ?? 500;

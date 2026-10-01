@@ -45,7 +45,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({ isCentered = false, inputR
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }, [input]);
+  }, [input, textareaRef]);
 
   return (
     <div

@@ -397,7 +397,7 @@ export function useChats(
 
       cancelStreamRef.current = cancel;
     },
-    [activeChatId, cancelActiveStream, activeProvider, activeModel]
+    [activeChatId, cancelActiveStream, activeProvider, activeModel, systemPrompt]
   );
 
   // ── Message action handlers ────────────────────────────────────────────────
@@ -567,7 +567,7 @@ export function useChats(
 
       cancelStreamRef.current = cancel;
     },
-    [cancelActiveStream, activeProvider, activeModel]
+    [cancelActiveStream, activeProvider, activeModel, systemPrompt]
   );
 
   const handleClearHistory = useCallback(() => {
