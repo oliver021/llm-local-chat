@@ -7,9 +7,7 @@ import { useChatActions } from '../context/ChatContext';
 import { useUIState } from '../hooks/useUIState';
 import { MessageActionMenu } from './MessageActionMenu';
 import { Sparkles } from './Icons';
-
-// Placeholder avatar — extract to a user config / context if auth is added
-const USER_AVATAR_URL = 'https://picsum.photos/100/100?random=1';
+import { UserAvatar } from './UserAvatar';
 
 interface MessageBubbleProps {
   message: Message;
@@ -68,7 +66,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, chatId })
             </div>
           ) : (
             <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden border border-gray-300 dark:border-gray-600">
-              <img src={USER_AVATAR_URL} alt="User" loading="lazy" className="w-full h-full object-cover" />
+              <UserAvatar />
             </div>
           )}
         </div>

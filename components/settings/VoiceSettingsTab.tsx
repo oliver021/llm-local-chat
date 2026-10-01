@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSettingsContext } from '../../context/SettingsContext';
 import { SettingToggle } from '../SettingToggle';
+import { PreviewNotice } from './PreviewNotice';
 import { TTSProvider, STTProvider } from '../../types';
 
 const TTS_PROVIDERS: { value: TTSProvider; label: string }[] = [
@@ -25,6 +26,8 @@ export const VoiceSettingsTab: React.FC = () => {
         <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-1">Voice Settings</h3>
         <p className="text-gray-500 dark:text-gray-400 text-sm">Configure text-to-speech and speech-to-text behaviour.</p>
       </div>
+
+      <PreviewNotice />
 
       <div className="space-y-4">
         <h4 className="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider">Text-to-Speech</h4>

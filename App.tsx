@@ -279,7 +279,7 @@ const App: React.FC = () => {
         theme={theme}
         toastOptions={{
           duration: 3000,
-          style: { fontFamily: 'Inter, sans-serif' },
+          style: { fontFamily: 'inherit' },
         }}
       />
     </ChatActionsProvider>

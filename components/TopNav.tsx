@@ -5,20 +5,13 @@ import { useChatActions } from '../context/ChatContext';
 import type { ProviderKey } from '../hooks/useProvider';
 import { PROVIDER_META } from '../hooks/useProvider';
 import { useBackendStatus } from '../hooks/useBackendStatus';
+import { UserAvatar } from './UserAvatar';
 
 const ArchiveIcon = ({ size = 15 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="3" width="20" height="5" rx="1" />
     <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
     <path d="M10 12h4" />
-  </svg>
-);
-
-const LogOutIcon = ({ size = 15 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-    <polyline points="16 17 21 12 16 7" />
-    <line x1="21" y1="12" x2="9" y2="12" />
   </svg>
 );
 
@@ -52,7 +45,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onOpenBookmarks,
   onOpenCopyChat,
 }) => {
-  const { openModelSelector } = useChatActions();
+  const { openModelSelector, openSettings } = useChatActions();
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
   const backendStatus = useBackendStatus();
@@ -161,7 +154,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             aria-expanded={profileOpen}
           >
             <div className="w-full h-full rounded-full border-2 border-white dark:border-gray-950 overflow-hidden">
-              <img src="https://picsum.photos/100/100?random=1" alt="User" className="w-full h-full object-cover" />
+              <UserAvatar />
             </div>
           </button>
 
@@ -175,11 +168,11 @@ export const TopNav: React.FC<TopNavProps> = ({
 
               <div className="py-1">
                 <button
-                  onClick={() => { setProfileOpen(false); }}
+                  onClick={() => { setProfileOpen(false); openSettings(); }}
                   className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
                 >
                   <UserIcon size={15} />
-                  Profile
+                  Profile & settings
                 </button>
 
                 <button
@@ -209,16 +202,6 @@ export const TopNav: React.FC<TopNavProps> = ({
                 >
                   <ArchiveIcon size={15} />
                   Archived Chats
-                </button>
-              </div>
-
-              <div className="border-t border-gray-100 dark:border-gray-700 py-1">
-                <button
-                  onClick={() => setProfileOpen(false)}
-                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
-                >
-                  <LogOutIcon size={15} />
-                  Sign out
                 </button>
               </div>
             </div>
