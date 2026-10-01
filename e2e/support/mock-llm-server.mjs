@@ -5,6 +5,7 @@
  *
  *   node e2e/support/mock-llm-server.mjs            # listens on :8080
  *   MOCK_LLM_PORT=18080 node e2e/support/mock-llm-server.mjs
+ *   MOCK_LLM_HOST=0.0.0.0 ...   # reachable from Docker containers
  *
  * It answers GET /v1/models and streams POST /v1/chat/completions as
  * server-sent events, one word at a time, echoing the last user message.
@@ -12,6 +13,7 @@
 import http from 'node:http';
 
 const port = Number(process.env.MOCK_LLM_PORT ?? 8080);
+const host = process.env.MOCK_LLM_HOST ?? '127.0.0.1';
 const delayMs = Number(process.env.MOCK_LLM_DELAY_MS ?? 40);
 const MODEL = 'mock-model.gguf';
 
@@ -64,6 +66,6 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: { message: 'not found' } }));
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`Mock LLM server on http://127.0.0.1:${port} (model: ${MODEL})`);
+server.listen(port, host, () => {
+  console.log(`Mock LLM server on http://${host}:${port} (model: ${MODEL})`);
 });

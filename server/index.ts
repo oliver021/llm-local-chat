@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Server } from 'node:http';
 import { createApp } from './app.js';
-import { ConfigError, isLoopback, loadConfig } from './config.js';
+import { ConfigError, isContainer, isLoopback, loadConfig } from './config.js';
 import { openDatabase } from './db.js';
 import { loadEnvFiles } from './env.js';
 
@@ -44,7 +44,14 @@ function main(): void {
     console.log(`  auth:       ${config.auth ? `basic auth enabled (user "${config.auth.user}")` : 'disabled'}`);
 
     const hasKeys = Boolean(config.openai.apiKey || config.anthropic.apiKey);
-    if (!isLoopback(config.host) && !config.auth) {
+    if (!isLoopback(config.host) && !config.auth && isContainer()) {
+      // Inside a container the process always binds to 0.0.0.0; what matters is how
+      // the port is published, which only the compose file / docker run knows.
+      console.log(
+        '\nNote: AUTH_PASSWORD is not set. Keep the published port on localhost (the docker compose' +
+          '\n      default) or set a password before exposing the app to other machines.\n'
+      );
+    } else if (!isLoopback(config.host) && !config.auth) {
       console.warn(
         '\nWARNING: the server is reachable from other machines and AUTH_PASSWORD is not set.' +
           (hasKeys ? '\n         Anyone who can reach it can spend your provider API credits.' : '') +

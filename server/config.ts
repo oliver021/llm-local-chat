@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 export interface UpstreamConfig {
@@ -81,6 +82,11 @@ export function loadConfig(
       apiKey: read(env, 'ANTHROPIC_API_KEY'),
     },
   };
+}
+
+/** Heuristic: Docker creates this file in every container. */
+export function isContainer(): boolean {
+  return fs.existsSync('/.dockerenv');
 }
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);

@@ -1,6 +1,65 @@
+# One command to run the app:
+#
+#   cp .env.example .env     # optional: API keys, upstream URLs, password
+#   docker compose up --build
+#   → http://localhost:3000
+#
+# The app container serves the UI, stores chats in SQLite (volume `app-data`)
+# and proxies to your model servers. By default it looks for llama.cpp and
+# Ollama running on the host machine. To run a model server in a container
+# instead, enable one of the profiles at the bottom.
+
 services:
+  app:
+    build: .
+    image: llm-local-chat
+    init: true
+    restart: unless-stopped
+    ports:
+      # Bound to localhost by default. Set BIND_ADDRESS=0.0.0.0 to expose it, and
+      # set AUTH_PASSWORD when you do: the app can spend your API credits.
+      - "${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    environment:
+      LLAMA_SERVER_URL: ${LLAMA_SERVER_URL:-http://host.docker.internal:8080}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      AUTH_USER: ${AUTH_USER:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+    extra_hosts:
+      # Lets the container reach services on the host on Linux (built in on Docker Desktop).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - app-data:/data
+
+  # ── Optional: run Ollama in a container ─────────────────────────────────────
+  #   docker compose --profile ollama up -d
+  #   then set OLLAMA_URL=http://ollama:11434 in .env and pull a model:
+  #   docker compose exec ollama ollama pull llama3.2
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    # NVIDIA GPU: install the NVIDIA Container Toolkit, then uncomment.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ── Optional: run llama.cpp's llama-server in a container ───────────────────
+  #   Put a GGUF file in ./models, set MODEL_FILE and LLAMA_SERVER_URL=http://llama-server:8080
+  #   docker compose --profile llama up -d
   llama-server:
-    image: ghcr.io/ggerganov/llama.cpp:server
+    profiles: ["llama"]
+    image: ghcr.io/ggml-org/llama.cpp:server
+    restart: unless-stopped
     volumes:
       - ./models:/models:ro
     command: >
@@ -8,17 +67,7 @@ services:
       --host 0.0.0.0
       --port 8080
       --ctx-size 4096
-      --n-predict 1024
-    ports:
-      - "8080:8080"
-    restart: unless-stopped
 
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "3000:80"
-    depends_on:
-      - llama-server
-    restart: unless-stopped
+volumes:
+  app-data:
+  ollama-data:
