@@ -5,13 +5,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-package-lock.json
 
 # SQLite database
 data/
 
 # Production
 dist/
+dist-server/
 build/
 .next/
 out/
@@ -41,9 +41,15 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+playwright-report/
+test-results/
 
 # Cache
 .cache/
 .eslintcache
 
+# Local notes
 development-notes.md
+
+# Local GGUF models (mounted into the llama-server container)
+models/
